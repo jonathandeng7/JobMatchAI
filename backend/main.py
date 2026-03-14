@@ -9,6 +9,9 @@ from docx import Document
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(title="JobMatch AI")
 
@@ -184,6 +187,12 @@ async def analyze(request: AnalyzeRequest):
             yield "data: [DONE]\n\n"
         except anthropic.AuthenticationError:
             yield f"data: {json.dumps({'error': 'Invalid API key. Check your ANTHROPIC_API_KEY.'})}\n\n"
+        except anthropic.BadRequestError as e:
+            msg = str(e)
+            if "credit balance is too low" in msg.lower():
+                yield f"data: {json.dumps({'error': 'Anthropic billing issue: your API credit balance is too low. Add credits in Anthropic Plans & Billing, then try again.'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'error': f'Anthropic request error: {msg}'})}\n\n"
         except anthropic.RateLimitError:
             yield f"data: {json.dumps({'error': 'Rate limited. Please try again in a moment.'})}\n\n"
         except Exception as e:

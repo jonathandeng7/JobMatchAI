@@ -4,3 +4,4 @@ anthropic
 python-multipart
 pdfplumber
 python-docx
+python-dotenv
