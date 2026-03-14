@@ -167,6 +167,7 @@
 
     #resume       { min-height: 200px; }
     #jobDesc      { min-height: 160px; }
+    #appQuestions { min-height: 120px; }
 
     .char-count {
       font-size: 11px;
@@ -280,6 +281,166 @@
     #rendered-output {
       display: none;
       padding-bottom: 60px;
+    }
+
+    .analysis-shell {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .insight-grid {
+      display: grid;
+      grid-template-columns: minmax(210px, 260px) 1fr;
+      gap: 12px;
+      margin-bottom: 2px;
+    }
+
+    .metric-card,
+    .strength-card {
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 14px;
+    }
+
+    .metric-label,
+    .strength-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .score-ring {
+      --score-color: #111111;
+      --score-angle: 0deg;
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background: conic-gradient(var(--score-color) var(--score-angle), #ececec 0deg);
+      position: relative;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .score-ring::after {
+      content: '';
+      position: absolute;
+      inset: 6px;
+      background: #fff;
+      border-radius: 50%;
+      border: 1px solid #f2f2f2;
+    }
+
+    .score-ring-value {
+      position: relative;
+      z-index: 1;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+    }
+
+    .score-detail {
+      font-size: 12px;
+      color: var(--ink-soft);
+      line-height: 1.35;
+    }
+
+    .strength-bars {
+      display: flex;
+      gap: 4px;
+      width: 100%;
+      height: 10px;
+      margin: 6px 0 10px;
+    }
+
+    .strength-segment {
+      height: 100%;
+      border-radius: 999px;
+      min-width: 2px;
+    }
+
+    .strength-segment.strong { background: #101010; }
+    .strength-segment.medium { background: #5a5a5a; }
+    .strength-segment.weak { background: #9a9a9a; }
+    .strength-segment.missing { background: #d3d3d3; }
+
+    .strength-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-soft);
+    }
+
+    .strength-pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      padding: 2px 8px;
+    }
+
+    .result-card {
+      background: rgba(255, 255, 255, 0.74);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .result-card summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--ink);
+      user-select: none;
+      border-bottom: 1px solid transparent;
+      transition: background 0.16s;
+    }
+
+    .result-card summary::-webkit-details-marker { display: none; }
+    .result-card summary:hover { background: #f8f8f8; }
+    .result-card[open] summary { border-bottom-color: var(--line); }
+
+    .result-card .summary-meta {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .result-card .card-body {
+      padding: 12px 14px;
+      animation: card-open 280ms var(--ease-out) both;
+    }
+
+    @keyframes card-open {
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .cursor {
@@ -533,6 +694,10 @@
         font-size: clamp(32px, 12vw, 48px);
       }
 
+      .insight-grid {
+        grid-template-columns: 1fr;
+      }
+
       header p { display: none; }
     }
 
@@ -576,6 +741,12 @@
           <label>Job Description</label>
           <textarea id="jobDesc" placeholder="Paste the job description here…" oninput="updateCount('jobDesc','jobDescCount')"></textarea>
           <div class="char-count"><span id="jobDescCount">0</span> chars</div>
+        </div>
+
+        <div class="input-group">
+          <label>Application Questions (Optional)</label>
+          <textarea id="appQuestions" placeholder="Paste any application questions you want help answering (one per line)…" oninput="updateCount('appQuestions','appQuestionsCount')"></textarea>
+          <div class="char-count"><span id="appQuestionsCount">0</span> chars</div>
         </div>
 
         <button class="btn btn-primary" id="analyzeBtn" onclick="analyze()">
@@ -633,7 +804,127 @@
       document.getElementById('stream-output').style.display = 'none';
       const el = document.getElementById('rendered-output');
       el.style.display = 'block';
-      el.innerHTML = marked.parse(text);
+      renderStructuredOutput(el, text);
+    }
+
+    function parseSections(markdownText) {
+      const sections = [];
+      const regex = /^##\s+(.+)$/gm;
+      const matches = [...markdownText.matchAll(regex)];
+
+      if (!matches.length) return sections;
+
+      for (let i = 0; i < matches.length; i += 1) {
+        const title = matches[i][1].trim();
+        const start = matches[i].index + matches[i][0].length;
+        const end = i + 1 < matches.length ? matches[i + 1].index : markdownText.length;
+        const body = markdownText.slice(start, end).trim();
+        sections.push({ title, body });
+      }
+
+      return sections;
+    }
+
+    function extractFitScore(markdownText) {
+      const match = markdownText.match(/Fit Score\*\*:\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*10/i);
+      if (!match) return null;
+      const value = Number(match[1]);
+      if (!Number.isFinite(value)) return null;
+      return Math.max(0, Math.min(10, value));
+    }
+
+    function extractStrengthCounts(markdownText) {
+      const counts = { strong: 0, medium: 0, weak: 0, missing: 0 };
+      const lines = markdownText.split('\n');
+
+      for (const line of lines) {
+        const rowMatch = line.match(/\|\s*[^|]+\|\s*[^|]+\|\s*(Strong|Medium|Weak|Missing)\s*\|/i);
+        if (!rowMatch) continue;
+        const key = rowMatch[1].toLowerCase();
+        if (counts[key] !== undefined) counts[key] += 1;
+      }
+
+      return counts;
+    }
+
+    function renderInsights(score, strengthCounts) {
+      const scorePercent = score !== null ? Math.round((score / 10) * 100) : 0;
+      const level = score === null ? 'Pending' : score >= 8 ? 'Strong fit' : score >= 6 ? 'Moderate fit' : 'Needs work';
+
+      const total = Object.values(strengthCounts).reduce((sum, count) => sum + count, 0);
+      const segment = (key) => {
+        if (!total || !strengthCounts[key]) return '';
+        const width = Math.max(6, Math.round((strengthCounts[key] / total) * 100));
+        return `<span class="strength-segment ${key}" style="width:${width}%"></span>`;
+      };
+
+      return `
+        <div class="insight-grid">
+          <div class="metric-card">
+            <div class="metric-label">Fit Score</div>
+            <div class="score-row">
+              <div class="score-ring" style="--score-angle:${Math.round((scorePercent / 100) * 360)}deg;">
+                <span class="score-ring-value">${score !== null ? score.toFixed(1) : '—'}</span>
+              </div>
+              <div class="score-detail">
+                <div>${level}</div>
+                <div>${score !== null ? `${scorePercent}% alignment` : 'Analyze to see score'}</div>
+              </div>
+            </div>
+          </div>
+          <div class="strength-card">
+            <div class="strength-label">Requirements Coverage</div>
+            <div class="strength-bars">
+              ${segment('strong')}
+              ${segment('medium')}
+              ${segment('weak')}
+              ${segment('missing')}
+            </div>
+            <div class="strength-legend">
+              <span class="strength-pill">Strong ${strengthCounts.strong}</span>
+              <span class="strength-pill">Medium ${strengthCounts.medium}</span>
+              <span class="strength-pill">Weak ${strengthCounts.weak}</span>
+              <span class="strength-pill">Missing ${strengthCounts.missing}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function cleanSectionTitle(title) {
+      return title.replace(/^\d+\.\s*/, '').trim();
+    }
+
+    function renderStructuredOutput(container, markdownText) {
+      const sections = parseSections(markdownText);
+      if (!sections.length) {
+        container.innerHTML = marked.parse(markdownText);
+        return;
+      }
+
+      const score = extractFitScore(markdownText);
+      const strengthCounts = extractStrengthCounts(markdownText);
+
+      let html = `<div class="analysis-shell">${renderInsights(score, strengthCounts)}`;
+
+      sections.forEach((section, index) => {
+        const title = cleanSectionTitle(section.title);
+        const bodyHtml = marked.parse(section.body || '_No content generated._');
+        const meta = index === 0 ? 'Start Here' : `${section.body.split(/\s+/).filter(Boolean).length} words`;
+
+        html += `
+          <details class="result-card" ${index < 2 ? 'open' : ''}>
+            <summary>
+              <span>${title}</span>
+              <span class="summary-meta">${meta}</span>
+            </summary>
+            <div class="card-body">${bodyHtml}</div>
+          </details>
+        `;
+      });
+
+      html += '</div>';
+      container.innerHTML = html;
     }
 
     function showError(message) {
@@ -647,6 +938,7 @@
     async function analyze() {
       const resume = document.getElementById('resume').value.trim();
       const jobDesc = document.getElementById('jobDesc').value.trim();
+      const applicationQuestions = document.getElementById('appQuestions').value.trim();
 
       if (!resume) { alert('Please paste your resume.'); return; }
       if (!jobDesc) { alert('Please paste the job description.'); return; }
@@ -665,7 +957,11 @@
         const response = await fetch('/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ resume, job_description: jobDesc }),
+          body: JSON.stringify({
+            resume,
+            job_description: jobDesc,
+            application_questions: applicationQuestions || null,
+          }),
         });
 
         if (!response.ok) {

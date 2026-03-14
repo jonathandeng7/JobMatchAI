@@ -95,7 +95,7 @@ When given a resume and job description, produce a complete analysis in the foll
 
 ## 7. Application Support
 
-[Draft answers for 2-3 likely application questions based on the role and the candidate's resume. Format as:]
+[If the user provided specific application questions, answer those first. Then optionally add 1-2 likely extra questions if useful. If no questions were provided, draft answers for 2-3 likely application questions based on the role and candidate's resume. Format as:]
 
 **Q: [likely question]**
 A: [draft answer drawing directly from resume content]
@@ -115,6 +115,7 @@ A: [draft answer drawing directly from resume content]
 class AnalyzeRequest(BaseModel):
     resume: str
     job_description: str
+    application_questions: str | None = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -172,6 +173,13 @@ async def analyze(request: AnalyzeRequest):
         f"Here is my resume:\n\n{request.resume}\n\n"
         f"Here is the job description I am targeting:\n\n{request.job_description}"
     )
+
+    if request.application_questions and request.application_questions.strip():
+        user_message += (
+            "\n\nHere are specific application questions I need help answering. "
+            "Please answer these first in Section 7 before adding any additional likely questions:\n\n"
+            f"{request.application_questions.strip()}"
+        )
 
     async def generate():
         try:
