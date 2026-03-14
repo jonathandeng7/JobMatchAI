@@ -1,1 +1,7 @@
--r backend/requirements.txt
+fastapi
+uvicorn
+anthropic
+python-multipart
+pdfplumber
+python-docx
+python-dotenv
