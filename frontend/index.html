@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobMatch AI</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f172a;
+      --surface:   #1e293b;
+      --surface2:  #273449;
+      --border:    #334155;
+      --accent:    #6366f1;
+      --accent-h:  #818cf8;
+      --text:      #e2e8f0;
+      --muted:     #94a3b8;
+      --green:     #34d399;
+      --yellow:    #fbbf24;
+      --red:       #f87171;
+      --radius:    10px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ── */
+    .shell {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .logo {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), #a78bfa);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+    }
+
+    header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+    header p  { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+    .panels {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      overflow: hidden;
+    }
+
+    /* ── Form panel ── */
+    .form-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 20px;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      background: var(--surface);
+    }
+
+    .input-group { display: flex; flex-direction: column; gap: 6px; }
+
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+    }
+
+    textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+      padding: 12px 14px;
+      resize: vertical;
+      transition: border-color 0.15s;
+      outline: none;
+      width: 100%;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea::placeholder { color: var(--border); }
+
+    #resume       { min-height: 200px; }
+    #jobDesc      { min-height: 160px; }
+
+    .char-count {
+      font-size: 11px;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-h); }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Results panel ── */
+    .results-panel {
+      overflow-y: auto;
+      padding: 28px 32px;
+      background: var(--bg);
+    }
+
+    /* Empty state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .empty-icon {
+      font-size: 40px;
+      opacity: 0.4;
+    }
+    .empty-state h2 { font-size: 16px; font-weight: 600; color: var(--text); opacity: 0.6; }
+    .empty-state p  { font-size: 13px; max-width: 300px; }
+
+    /* Streaming output (raw text phase) */
+    #stream-output {
+      display: none;
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 12.5px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      color: var(--muted);
+      padding-bottom: 40px;
+    }
+
+    /* Rendered markdown */
+    #rendered-output {
+      display: none;
+      padding-bottom: 60px;
+    }
+
+    /* Cursor blink */
+    .cursor {
+      display: inline-block;
+      width: 2px; height: 1em;
+      background: var(--accent);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-start infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ── Markdown styles ── */
+    #rendered-output h2 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 32px 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      letter-spacing: -0.2px;
+    }
+    #rendered-output h2:first-child { margin-top: 0; }
+
+    #rendered-output h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent-h);
+      margin: 20px 0 8px;
+    }
+
+    #rendered-output p {
+      margin-bottom: 10px;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    #rendered-output ul, #rendered-output ol {
+      margin: 8px 0 12px 20px;
+    }
+    #rendered-output li {
+      margin-bottom: 5px;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    #rendered-output strong {
+      color: #fff;
+      font-weight: 600;
+    }
+
+    #rendered-output hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 24px 0;
+    }
+
+    /* Table */
+    #rendered-output table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 13px;
+    }
+    #rendered-output th {
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 9px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    #rendered-output td {
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: top;
+    }
+    #rendered-output tr:hover td { background: var(--surface2); }
+
+    /* Strength badges */
+    #rendered-output td:last-child {
+      white-space: nowrap;
+    }
+
+    /* Code blocks */
+    #rendered-output code {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 12.5px;
+      color: var(--accent-h);
+    }
+    #rendered-output pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      overflow-x: auto;
+      margin: 12px 0;
+    }
+    #rendered-output pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    /* Blockquote (used for ORIGINAL/REVISED/WHY sections) */
+    #rendered-output blockquote {
+      border-left: 3px solid var(--accent);
+      padding: 10px 16px;
+      margin: 12px 0;
+      background: var(--surface);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      color: var(--muted);
+      font-size: 13.5px;
+    }
+
+    /* Error banner */
+    .error-banner {
+      background: rgba(248, 113, 113, 0.1);
+      border: 1px solid rgba(248, 113, 113, 0.3);
+      border-radius: var(--radius);
+      color: var(--red);
+      padding: 14px 18px;
+      font-size: 13.5px;
+    }
+
+    /* ── File upload ── */
+    .label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .upload-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-h);
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 6px;
+      padding: 3px 9px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .upload-btn:hover { background: rgba(99, 102, 241, 0.2); border-color: var(--accent); }
+    .upload-btn.loading { opacity: 0.6; cursor: not-allowed; pointer-events: none; }
+
+    .file-badge {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .file-badge.visible { display: flex; }
+    .file-badge-name {
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--accent-h);
+      font-weight: 500;
+    }
+    .file-badge-clear {
+      color: var(--muted);
+      cursor: pointer;
+      line-height: 1;
+      font-size: 14px;
+      padding: 0 2px;
+    }
+    .file-badge-clear:hover { color: var(--red); }
+
+    /* Responsive */
+    @media (max-width: 800px) {
+      .panels { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .form-panel { border-right: none; border-bottom: 1px solid var(--border); }
+      header p { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="logo">J</div>
+      <h1>JobMatch AI</h1>
+      <p>Powered by Claude Opus</p>
+    </header>
+
+    <div class="panels">
+      <!-- Form -->
+      <div class="form-panel">
+        <div class="input-group">
+          <div class="label-row">
+            <label for="resume">Your Resume</label>
+            <label class="upload-btn" id="uploadBtn" title="Upload PDF, DOCX, or TXT">
+              ↑ Upload file
+              <input type="file" id="resumeFile" accept=".pdf,.docx,.txt" style="display:none" onchange="handleFileUpload(this)" />
+            </label>
+          </div>
+          <div class="file-badge" id="fileBadge">
+            <span class="file-badge-name" id="fileBadgeName"></span>
+            <span class="file-badge-clear" title="Clear file" onclick="clearFile()">✕</span>
+          </div>
+          <textarea id="resume" placeholder="Paste your full resume text here, or upload a file above…" oninput="updateCount('resume','resumeCount')"></textarea>
+          <div class="char-count"><span id="resumeCount">0</span> chars</div>
+        </div>
+
+        <div class="input-group">
+          <label>Job Description</label>
+          <textarea id="jobDesc" placeholder="Paste the job description here…" oninput="updateCount('jobDesc','jobDescCount')"></textarea>
+          <div class="char-count"><span id="jobDescCount">0</span> chars</div>
+        </div>
+
+        <button class="btn btn-primary" id="analyzeBtn" onclick="analyze()">
+          Analyze Fit
+        </button>
+      </div>
+
+      <!-- Results -->
+      <div class="results-panel">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">🎯</div>
+          <h2>Ready when you are</h2>
+          <p>Paste your resume and a job description, then click Analyze Fit.</p>
+        </div>
+
+        <div id="stream-output"></div>
+        <div id="rendered-output"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const marked = window.marked;
+    marked.setOptions({ breaks: true, gfm: true });
+
+    function updateCount(textareaId, countId) {
+      const len = document.getElementById(textareaId).value.length;
+      document.getElementById(countId).textContent = len.toLocaleString();
+    }
+
+    let isStreaming = false;
+    let accumulatedText = '';
+
+    function setLoading(loading) {
+      const btn = document.getElementById('analyzeBtn');
+      if (loading) {
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner"></div> Analyzing…';
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = 'Analyze Fit';
+      }
+    }
+
+    function showStream() {
+      document.getElementById('emptyState').style.display = 'none';
+      document.getElementById('rendered-output').style.display = 'none';
+      const el = document.getElementById('stream-output');
+      el.style.display = 'block';
+      el.innerHTML = '';
+      return el;
+    }
+
+    function finalizeRender(text) {
+      document.getElementById('stream-output').style.display = 'none';
+      const el = document.getElementById('rendered-output');
+      el.style.display = 'block';
+      el.innerHTML = marked.parse(text);
+    }
+
+    function showError(message) {
+      document.getElementById('emptyState').style.display = 'none';
+      document.getElementById('stream-output').style.display = 'none';
+      const el = document.getElementById('rendered-output');
+      el.style.display = 'block';
+      el.innerHTML = `<div class="error-banner">⚠️ ${message}</div>`;
+    }
+
+    async function analyze() {
+      const resume = document.getElementById('resume').value.trim();
+      const jobDesc = document.getElementById('jobDesc').value.trim();
+
+      if (!resume) { alert('Please paste your resume.'); return; }
+      if (!jobDesc) { alert('Please paste the job description.'); return; }
+      if (isStreaming) return;
+
+      isStreaming = true;
+      accumulatedText = '';
+      setLoading(true);
+
+      const streamEl = showStream();
+      let cursorEl = document.createElement('span');
+      cursorEl.className = 'cursor';
+      streamEl.appendChild(cursorEl);
+
+      try {
+        const response = await fetch('/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resume, job_description: jobDesc }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.detail || `Server error ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep incomplete line
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6);
+            if (raw === '[DONE]') {
+              finalizeRender(accumulatedText);
+              isStreaming = false;
+              setLoading(false);
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed.error) {
+                showError(parsed.error);
+                isStreaming = false;
+                setLoading(false);
+                return;
+              }
+              if (parsed.text) {
+                accumulatedText += parsed.text;
+                // Update raw stream view (insert before cursor)
+                const textNode = document.createTextNode(parsed.text);
+                streamEl.insertBefore(textNode, cursorEl);
+                // Keep results panel scrolled to bottom during stream
+                streamEl.parentElement.scrollTop = streamEl.parentElement.scrollHeight;
+              }
+            } catch {
+              // Ignore malformed SSE lines
+            }
+          }
+        }
+
+        // Stream ended without [DONE] — still render what we have
+        if (accumulatedText) finalizeRender(accumulatedText);
+
+      } catch (err) {
+        showError(err.message || 'An unexpected error occurred.');
+      } finally {
+        isStreaming = false;
+        setLoading(false);
+      }
+    }
+
+    async function handleFileUpload(input) {
+      const file = input.files[0];
+      if (!file) return;
+
+      const btn = document.getElementById('uploadBtn');
+      btn.classList.add('loading');
+      btn.querySelector('input').disabled = true;
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch('/extract-text', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.detail || 'Failed to extract text from file.');
+          return;
+        }
+
+        const textarea = document.getElementById('resume');
+        textarea.value = data.text;
+        updateCount('resume', 'resumeCount');
+
+        // Show badge
+        document.getElementById('fileBadgeName').textContent = file.name;
+        document.getElementById('fileBadge').classList.add('visible');
+      } catch (err) {
+        alert('Upload failed: ' + err.message);
+      } finally {
+        btn.classList.remove('loading');
+        btn.querySelector('input').disabled = false;
+        // Reset so the same file can be re-uploaded if needed
+        input.value = '';
+      }
+    }
+
+    function clearFile() {
+      document.getElementById('resume').value = '';
+      updateCount('resume', 'resumeCount');
+      document.getElementById('fileBadge').classList.remove('visible');
+      document.getElementById('fileBadgeName').textContent = '';
+    }
+
+    // Allow Cmd/Ctrl+Enter to submit
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') analyze();
+    });
+  </script>
+</body>
+</html>
