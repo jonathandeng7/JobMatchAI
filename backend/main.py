@@ -3,7 +3,7 @@ import json
 import os
 import pathlib
 
-import anthropic
+import openai
 import pdfplumber
 from docx import Document
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -163,11 +163,9 @@ async def analyze(request: AnalyzeRequest):
     if not request.job_description.strip():
         raise HTTPException(status_code=400, detail="Job description cannot be empty")
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("JOBMATCH_OPENAI_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not set")
-
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set (or JOBMATCH_OPENAI_API_KEY in cloud settings)")
 
     user_message = (
         f"Here is my resume:\n\n{request.resume}\n\n"
@@ -183,28 +181,30 @@ async def analyze(request: AnalyzeRequest):
 
     async def generate():
         try:
-            async with client.messages.stream(
-                model="claude-opus-4-6",
-                max_tokens=8000,
-                thinking={"type": "adaptive"},
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_message}],
-            ) as stream:
-                async for text in stream.text_stream:
-                    yield f"data: {json.dumps({'text': text})}\n\n"
+            async with openai.AsyncOpenAI(api_key=api_key) as client:
+                stream = await client.responses.create(
+                    model=os.environ.get("JOBMATCH_OPENAI_MODEL", "gpt-5"),
+                    stream=True,
+                    max_output_tokens=8000,
+                    instructions=SYSTEM_PROMPT,
+                    input=user_message,
+                )
+                async with stream:
+                    async for event in stream:
+                        if event.type == "response.output_text.delta":
+                            yield f"data: {json.dumps({'text': event.delta})}\n\n"
+                        elif event.type in {"error", "response.failed", "response.incomplete"}:
+                            yield f"data: {json.dumps({'error': 'OpenAI could not complete the analysis. Please try again.'})}\n\n"
+                            return
             yield "data: [DONE]\n\n"
-        except anthropic.AuthenticationError:
-            yield f"data: {json.dumps({'error': 'Invalid API key. Check your ANTHROPIC_API_KEY.'})}\n\n"
-        except anthropic.BadRequestError as e:
-            msg = str(e)
-            if "credit balance is too low" in msg.lower():
-                yield f"data: {json.dumps({'error': 'Anthropic billing issue: your API credit balance is too low. Add credits in Anthropic Plans & Billing, then try again.'})}\n\n"
-            else:
-                yield f"data: {json.dumps({'error': f'Anthropic request error: {msg}'})}\n\n"
-        except anthropic.RateLimitError:
-            yield f"data: {json.dumps({'error': 'Rate limited. Please try again in a moment.'})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': f'Error: {str(e)}'})}\n\n"
+        except openai.AuthenticationError:
+            yield f"data: {json.dumps({'error': 'Invalid OpenAI API key. Check your API key in environment settings.'})}\n\n"
+        except openai.RateLimitError:
+            yield f"data: {json.dumps({'error': 'OpenAI rate limit or quota exceeded. Check API billing and limits, then try again.'})}\n\n"
+        except openai.BadRequestError:
+            yield f"data: {json.dumps({'error': 'OpenAI rejected the request. Check the configured model and input.'})}\n\n"
+        except Exception:
+            yield f"data: {json.dumps({'error': 'Unable to complete the OpenAI request. Please try again.'})}\n\n"
 
     return StreamingResponse(
         generate(),

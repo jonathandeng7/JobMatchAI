@@ -3,7 +3,7 @@
 ## 1. Prerequisites
 
 - A Vercel account
-- Anthropic API key with available credits
+- OpenAI API key with available credits
 - This repository pushed to GitHub
 
 ## 2. Project setup included in this repo
@@ -16,7 +16,7 @@
 
 In Vercel Project Settings -> Environment Variables, add:
 
-- `ANTHROPIC_API_KEY` = your key
+- `OPENAI_API_KEY` = your key
 
 Apply it to:
 
@@ -39,7 +39,7 @@ Apply it to:
 npm i -g vercel
 vercel login
 vercel link
-vercel env add ANTHROPIC_API_KEY
+vercel env add OPENAI_API_KEY
 vercel --prod
 ```
 
@@ -51,14 +51,30 @@ After deploy, open your Vercel URL and test:
 2. Paste job description
 3. Run Analyze Fit
 
-If you see an API credit error, add credits in Anthropic Plans & Billing.
+If you see an API credit error, add credits in OpenAI API billing.
 
 ## 6. Troubleshooting
 
-- `ANTHROPIC_API_KEY not set`:
+- `OPENAI_API_KEY not set`:
   - Confirm env var exists in Vercel Project Settings.
   - Redeploy after adding/updating env vars.
-- 400 billing error from Anthropic:
+- 429 quota error from OpenAI:
   - Key is valid, but account/project needs credits.
 - Upload parsing issues:
   - Use PDF/DOCX/TXT only.
+
+## Local and cloud development
+
+Install with `python -m venv .venv` and
+`.venv/bin/python -m pip install -r backend/requirements.txt`, then run
+`.venv/bin/python -m uvicorn backend.main:app --reload --port 8000`.
+
+The backend uses the OpenAI Responses API with `gpt-5` by default. Set
+`JOBMATCH_OPENAI_MODEL` to another Responses-compatible model if needed.
+`OPENAI_API_KEY` takes precedence. In Codex cloud environment settings, use the
+secret name `JOBMATCH_OPENAI_API_KEY` with destination `api.openai.com` because
+the platform reserves names beginning with `OPENAI_`. The backend accepts
+that alias as well. Enter keys securely in environment settings; never commit them.
+ChatGPT/Codex subscriptions do not supply API credits.
+
+Run backend checks with `.venv/bin/python -m unittest discover -s tests -v`.
