@@ -36,6 +36,7 @@ class ExportRequest(BaseModel):
     resume: str = Field(min_length=1, max_length=40000)
 
 
+@router.get('/', response_class=HTMLResponse)
 @router.get('/apply', response_class=HTMLResponse)
 async def apply_page():
     return (ROOT / 'frontend' / 'apply.html').read_text()

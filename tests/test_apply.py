@@ -23,6 +23,12 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
         await self.client.aclose()
 
     async def test_apply_and_extension_download(self):
+        response = await self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Your next application', response.text)
+        response = await self.client.get('/analysis')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Apply workspace', response.text)
         response = await self.client.get('/apply')
         self.assertEqual(response.status_code, 200)
         self.assertIn('Your next application', response.text)

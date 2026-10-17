@@ -1,6 +1,6 @@
 # JobMatch AI Chrome extension (v0.1)
 
-1. Open your deployed JobMatch AI app at `/apply`.
+1. Start the local app with `python run.py` from the repository root. The home page is the Apply workspace; `/apply` works too.
 2. Download the extension ZIP and extract it to a folder.
 3. Open `chrome://extensions`, enable Developer mode, click **Load unpacked**, and select that folder (the one containing manifest.json). Pin JobMatch AI if desired. This is a local development extension, not a Chrome Web Store listing.
 4. On the Apply page, import a private profile or enter your details; upload your resume and paste a job description. Optionally capture selected job text using the extension and import that JSON into the page.

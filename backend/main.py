@@ -118,8 +118,8 @@ class AnalyzeRequest(BaseModel):
     application_questions: str | None = None
 
 
-@app.get("/", response_class=HTMLResponse)
-async def root():
+@app.get("/analysis", response_class=HTMLResponse)
+async def analysis_page():
     if not FRONTEND_PATH.exists():
         raise HTTPException(status_code=404, detail="Frontend not found")
     return FRONTEND_PATH.read_text()
