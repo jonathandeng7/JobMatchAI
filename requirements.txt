@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-openai>=1.66.0
+openai>=2.0.0
 python-multipart
 pdfplumber
 python-docx

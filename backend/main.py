@@ -214,3 +214,8 @@ async def analyze(request: AnalyzeRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+from backend.apply import router as apply_router
+
+app.include_router(apply_router)

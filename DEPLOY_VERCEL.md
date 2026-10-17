@@ -78,3 +78,27 @@ that alias as well. Enter keys securely in environment settings; never commit th
 ChatGPT/Codex subscriptions do not supply API credits.
 
 Run backend checks with `.venv/bin/python -m unittest discover -s tests -v`.
+
+## Apply workspace and Chrome extension
+
+Visit `/apply` to manage a profile stored in your browser, import a resume,
+request reviewed tailoring, and export an approved DOCX/application bundle.
+Download `/extension.zip`, extract it, and load the folder via Chrome's
+**Extensions → Developer mode → Load unpacked**. See [extension instructions](extension/README.md)
+for supported sites, installation, data handling, and limitations.
+
+Personal resume/profile data must not be committed to this repository. Profile
+and application JSON imports are local to your browser. AI tailoring sends the
+resume and job description to OpenAI. The server does not persist profiles.
+The extension fills conventional empty fields on Greenhouse and Lever only;
+custom widgets and eligibility answers require manual completion. You submit.
+
+Backend checks: `.venv/bin/python -m unittest discover -s tests -v`.
+For browser fixture checks, run the app on port 8001, then
+`node tests/browser_apply.cjs` with Playwright installed. `APP_URL` overrides
+the app address and `CHROMIUM_PATH` overrides the Chromium executable
+(default `/usr/lib/chromium/chromium`). These checks exercise the page and
+form-filling code with synthetic data; they do not submit live applications or
+establish live employer compatibility. The managed cloud browser blocks
+unpacked extension loading, so Chrome installation/popup integration still
+requires a manual check in your own browser.

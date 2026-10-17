@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "JobMatch AI Autofill",
+  "version": "0.1.0",
+  "description": "Fill reviewed application details on Greenhouse and Lever. You review and submit.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "action": {"default_popup": "popup.html", "default_title": "JobMatch AI"}
+}
