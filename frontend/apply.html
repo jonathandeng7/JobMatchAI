@@ -1,36 +1,58 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Apply · JobMatch AI</title>
-<style>
-:root{color-scheme:light;--ink:#163b34;--line:#d5dfd9}*{box-sizing:border-box}body{margin:0;background:#f5f5ed;color:var(--ink);font:16px system-ui}main{max-width:1120px;margin:auto;padding:32px 22px}nav{display:flex;justify-content:space-between;gap:20px}a{color:inherit}h1{font:52px Georgia;margin-bottom:12px}h2{font:28px Georgia}p{line-height:1.6}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}section{border:1px solid var(--line);border-radius:16px;background:white;padding:24px;margin:24px 0}label{display:block;font-size:14px;margin:14px 0 6px}input,textarea,select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:7px}textarea{min-height:240px;resize:vertical}button,.button{display:inline-block;background:var(--ink);color:white;padding:11px 16px;border:0;border-radius:8px;cursor:pointer;font:inherit;margin:8px 6px 0 0;text-decoration:none}button:disabled{opacity:.5;cursor:wait}.muted{color:#566c63;font-size:14px}#status{position:sticky;bottom:12px;background:#e5eee8;padding:14px;border-radius:8px;white-space:pre-wrap}#changes{white-space:pre-wrap}.row{display:flex;gap:12px;align-items:center}#reviewed{width:auto} @media(max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:38px}}
-</style></head><body><main>
-<nav><strong>JobMatch AI · Apply</strong><a href="/analysis">Resume analysis →</a><a href="/extension.zip">Download Chrome extension</a></nav>
-<h1>Your next application,<br>ready for review.</h1><p>Build a profile, tailor your resume, and fill an application with the Chrome extension. You review and submit on the job site.</p>
-<p class="muted">Profile drafts stay in this browser's local storage. Uploading a resume sends it to this app for extraction; tailoring sends the resume and job description to OpenAI. Export files contain personal information.</p>
-<section><h2>1. Your profile</h2><label>Import your private profile or a previous application bundle<input id="profileFile" type="file" accept=".json,application/json"></label><div class="grid" id="fields"></div><button id="save">Save in this browser</button><button id="clear">Clear saved profile and drafts</button></section>
-<div class="grid"><section><h2>2. Resume &amp; job</h2><label>Upload resume (PDF, DOCX, TXT)<input id="resumeFile" type="file" accept=".pdf,.docx,.txt"></label><label for="original">Original resume</label><textarea id="original"></textarea><label for="job">Job description</label><textarea id="job" placeholder="Paste the job description, or import a job captured by the extension."></textarea><label>Import captured job<input id="jobFile" type="file" accept=".json,application/json"></label><button id="tailor">Suggest tailored resume</button><button id="useOriginal">Use original resume</button></section>
-<section><h2>3. Review &amp; export</h2><p class="muted">Check every statement and date. AI edits may be wrong. The generated DOCX is a simple text layout; use your original PDF directly on the job site if you prefer its formatting.</p><div id="changes"></div><label for="approved">Resume to export (editable)</label><textarea id="approved"></textarea><label class="row"><input type="checkbox" id="reviewed">I reviewed this resume and approve it for this application.</label><button id="document">Download approved DOCX</button><button id="bundle">Export for extension</button><p class="muted">Import the exported JSON in the extension. On Greenhouse or Lever, click Fill empty fields, review the results, then submit yourself. Custom questions, consent, eligibility, and demographic answers remain manual.</p></section></div>
-<div id="status" role="status" aria-live="polite">Ready. Import your profile or enter your details.</div>
-</main><script>
-const $=id=>document.getElementById(id), key='jobmatch-apply-v1';
-const labels={firstName:'First name',lastName:'Last name',email:'Email',phone:'Phone',linkedin:'LinkedIn URL',github:'GitHub URL',website:'Portfolio URL',city:'City',state:'State / region',postalCode:'Postal code',country:'Country',school:'School',degree:'Degree',graduation:'Graduation date',targetRoles:'Target roles',targetLocations:'Target locations',workAuthorization:'Work authorization (for your reference)',sponsorship:'Sponsorship needs (for your reference)',availableFrom:'Available start date'};
-for(const [name,label] of Object.entries(labels)){const wrap=document.createElement('label');wrap.textContent=label;const input=document.createElement('input');input.id=name;input.type=name==='email'?'email':'text';wrap.append(input);$('fields').append(wrap)}
-function profile(){return Object.fromEntries(Object.keys(labels).map(k=>[k,$(k).value.trim()]))}
-function status(text){$('status').textContent=text}
-function load(data){if(!data||typeof data!=='object')throw Error('Invalid profile file');for(const k of Object.keys(labels))$(k).value=typeof data.profile?.[k]==='string'?data.profile[k]:'';for(const [k,id]of [['resume','original'],['jobDescription','job'],['approvedResume','approved']])$(id).value=typeof data[k]==='string'?data[k]:'';$('reviewed').checked=false}
-function draft(){return {version:1,profile:profile(),resume:$('original').value,jobDescription:$('job').value,approvedResume:$('approved').value}}
-try{const saved=localStorage.getItem(key);if(saved)load(JSON.parse(saved))}catch{status('Saved profile could not be loaded. Import it again.')}
-function download(data,name,type){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-async function post(url,data){const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const body=await response.json();if(!response.ok)throw Error(typeof body.detail==='string'?body.detail:'Please check your input and retry.');return body}
-function action(id,fn){$(id).onclick=async()=>{const btn=$(id);btn.disabled=true;try{await fn()}catch(e){status(e.message)}finally{btn.disabled=false}}}
-$('profileFile').onchange=async e=>{try{load(JSON.parse(await e.target.files[0].text()));status('Profile imported. Review the fields before saving.')}catch{status('Could not import profile JSON.')}};
-$('jobFile').onchange=async e=>{try{const job=JSON.parse(await e.target.files[0].text());if(typeof job.jobDescription!=='string')throw Error();$('job').value=job.jobDescription;$('reviewed').checked=false;status('Job imported. Check that it includes the job description only.')}catch{status('Could not import captured job.')}};
-$('resumeFile').onchange=async e=>{try{const form=new FormData();form.append('file',e.target.files[0]);const r=await fetch('/extract-text',{method:'POST',body:form});const d=await r.json();if(!r.ok)throw Error(d.detail||'Extraction failed');$('original').value=d.text;$('reviewed').checked=false;status('Resume extracted. Review the original text.')}catch(e){status(e.message)}};
-action('save',()=>{localStorage.setItem(key,JSON.stringify(draft()));status('Saved in this browser. Shared computers can access this profile.')});
-action('clear',()=>{if(confirm('Delete this browser’s saved profile and drafts?')){localStorage.removeItem(key);load({});$('changes').textContent='';status('Browser profile cleared. Delete exported files separately.')}});
-action('useOriginal',()=>{$('approved').value=$('original').value;$('reviewed').checked=false;$('changes').textContent='Using original resume text.'});
-action('tailor',async()=>{status('Preparing suggestions…');$('reviewed').checked=false;const data=await post('/tailor',{resume:$('original').value,job_description:$('job').value});$('approved').value=data.resume;$('changes').textContent=data.changes.map(c=>`Original: ${c.original}\nSuggested: ${c.revised}\nWhy: ${c.reason}`).join('\n\n')+'\n\nQuestions: '+(data.questions.join('\n')||'None flagged.');status('Suggestions ready. Review the changes and the complete resume.')});
-for(const id of ['approved','original','job',...Object.keys(labels)])$(id).addEventListener('input',()=>{$('reviewed').checked=false});
-async function documentData(){if(!$('reviewed').checked)throw Error('Review and approve the resume first.');return post('/resume-document',{resume:$('approved').value})}
-action('document',async()=>{const doc=await documentData();const bytes=Uint8Array.from(atob(doc.base64),c=>c.charCodeAt(0));download(bytes,doc.filename,doc.mime);status('Approved DOCX downloaded.')});
-action('bundle',async()=>{const doc=await documentData();const data={...draft(),approved:true,document:doc};download(JSON.stringify(data,null,2),'jobmatch-application.json','application/json');status('Application exported. Import it in the Chrome extension. Keep this file private.')});
-</script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Apply · JobMatch AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Cormorant+Garamond:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="/assets/apply.css" rel="stylesheet">
+  <script defer src="/assets/apply.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/" aria-label="JobMatch AI home"><span class="monogram">JM</span><span>JOBMATCH <span class="light">AI</span></span></a>
+  <nav aria-label="Main navigation"><a class="active" href="/" aria-current="page">Apply workspace</a><a href="/analysis">Resume analysis</a></nav>
+  <a class="button small" href="/extension.zip">Get Chrome extension <span>→</span></a>
+</header>
+<main>
+  <div class="hero"><div><p class="eyebrow">YOUR APPLICATION WORKSPACE</p><h1>Your experience.<br><em>Their next hire.</em></h1><p class="intro">One saved resume. A better fit for every role.<br>Tailor here, or autofill directly from a job application.</p></div>
+    <div class="connection"><span class="dot" id="readyDot"></span><div><strong id="readyText">Connecting to your workspace</strong><p id="readyDetail">Your profile and resume live on this computer.</p></div></div>
+  </div>
+  <div class="workspace-nav" role="tablist" aria-label="Workspace views">
+    <button class="tab active" id="applicationTab" role="tab" aria-selected="true" aria-controls="applicationView">01 <span>Application</span></button>
+    <button class="tab" id="profileTab" role="tab" aria-selected="false" aria-controls="profileView">02 <span>My profile &amp; resume</span><span id="savedMark" class="badge">SET UP ONCE</span></button>
+  </div>
+  <section id="applicationView" role="tabpanel" aria-labelledby="applicationTab">
+    <div class="workspace-grid">
+      <div>
+        <article class="panel job-panel"><div class="panel-head"><span class="eyebrow">THE OPPORTUNITY</span><span class="quiet">01 / PREPARE</span></div><h2>What’s the role?</h2><p class="muted">Paste a job description. We’ll use your saved base resume.</p>
+          <label for="job" class="sr-only">Job description</label><textarea id="job" class="job-input" placeholder="Paste the job description here…"></textarea>
+          <div class="panel-foot"><span class="quiet" id="jobCount">0 characters</span><button id="tailor" class="button">Tailor my saved resume <span>→</span></button></div>
+        </article>
+        <article class="extension-note"><div class="icon-box">→</div><div><h3>Already on an application?</h3><p>Open the Chrome extension and click <strong>Autofill with my information</strong>. It reads the job, tailors your saved resume, and fills your details.</p><a href="/extension.zip" class="text-link">Download extension →</a></div></article>
+        <details class="subtle-details"><summary>Import a captured job or restore a backup</summary><label>Captured job JSON<input id="jobFile" type="file" accept=".json,application/json"></label><label>Profile backup JSON<input id="profileFile" type="file" accept=".json,application/json"></label></details>
+      </div>
+      <article class="panel preview-panel"><div class="panel-head"><span class="eyebrow">YOUR RESUME</span><span id="previewState" class="badge">PREVIEW</span></div>
+        <div id="emptyPreview" class="empty-preview"><div class="paper-icon"><span></span><span></span><span></span></div><h2>A resume for this role.</h2><p>Your tailored version will appear here.<br>Your base resume always stays intact.</p><button id="setupShortcut" class="text-link">Set up your saved resume →</button></div>
+        <div id="result" hidden><div class="result-heading"><h2>Made for this opportunity.</h2><span class="quiet">EDITABLE DRAFT</span></div><label for="approved" class="sr-only">Tailored resume</label><textarea id="approved" class="resume-preview" spellcheck="false"></textarea><details id="changesDetails"><summary id="changesSummary">What changed</summary><div id="changes"></div></details><div class="result-actions"><button id="document" class="button">Download DOCX ↓</button><button id="useOriginal" class="button secondary">Preview base resume</button></div><p class="fineprint">Check the wording before submitting. DOCX uses a simple text layout.</p></div>
+      </article>
+    </div>
+  </section>
+  <section id="profileView" role="tabpanel" aria-labelledby="profileTab" hidden>
+    <div class="profile-heading"><div><h2>Your information. Saved once.</h2><p class="muted">Changes save automatically on this computer and are available to the extension.</p></div><span id="saveState" class="quiet">Loading…</span></div>
+    <fieldset id="candidateControls" disabled>
+      <div class="workspace-grid profile-grid"><article class="panel"><div class="panel-head"><span class="eyebrow">THE SOURCE OF TRUTH</span><span class="badge">BASE RESUME</span></div>
+        <h2 id="resumeName">Add your resume</h2><p class="muted">Upload once. Every job starts from this version.</p>
+        <label class="upload-button" for="resumeFile"><span>↑</span> <span id="uploadLabel">Choose PDF, DOCX, or TXT</span><input id="resumeFile" type="file" accept=".pdf,.docx,.txt"></label>
+        <label for="original" class="field-label">Saved resume text <span>Editable</span></label><textarea id="original" class="base-resume" placeholder="Upload your resume or paste its text once."></textarea><p class="fineprint">Replacing this text updates your base resume. Tailored drafts never replace it.</p>
+      </article><article class="panel"><div class="panel-head"><span class="eyebrow">THE DETAILS</span><span class="quiet">USED FOR AUTOFILL</span></div><h2>My profile</h2><div id="fields" class="field-grid"></div></article></div>
+    </fieldset>
+    <div class="profile-bottom"><p class="fineprint">Your profile is stored in <code>.local/candidate.json</code> on this computer, outside Git tracking. Tailoring sends resume and job text to OpenAI.</p><div><button id="save" class="button secondary small">Save now</button><button id="backup" class="text-link">Export backup ↓</button><button id="clear" class="text-link danger">Delete saved information</button></div></div>
+  </section>
+  <footer><span>BUILT AROUND YOUR EXPERIENCE.</span><span>You review. You submit.</span></footer>
+</main>
+<div id="status" class="status" role="status" aria-live="polite">Loading your saved workspace…</div>
+</body>
+</html>

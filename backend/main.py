@@ -219,3 +219,7 @@ async def analyze(request: AnalyzeRequest):
 from backend.apply import router as apply_router
 
 app.include_router(apply_router)
+
+from fastapi.staticfiles import StaticFiles
+
+app.mount("/assets", StaticFiles(directory=FRONTEND_PATH.parent / "assets"), name="assets")

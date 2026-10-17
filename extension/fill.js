@@ -23,10 +23,13 @@ async function jobmatchFill(bundle, attachResume) {
     el.placeholder, el.name].filter(Boolean);
   const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
   for (const el of document.querySelectorAll('input, textarea, select')) {
-    if (el.disabled || el.readOnly || !visible(el)) continue;
+    if (el.disabled || el.readOnly) continue;
+    const type = (el.type || '').toLowerCase();
+    // Recruiting sites often hide the native file input behind a visible label.
+    const visibleUpload = type === 'file' && Array.from(el.labels || []).some(visible);
+    if (!visible(el) && !visibleUpload) continue;
     const labels = labelFor(el);
     const label = labels[0] || 'Unlabelled field';
-    const type = (el.type || '').toLowerCase();
     if (['hidden','submit','button','reset','checkbox','radio'].includes(type)) {
       if (['checkbox','radio'].includes(type)) report.remaining.push(`${label} (choose manually)`);
       continue;
@@ -34,7 +37,7 @@ async function jobmatchFill(bundle, attachResume) {
     if (type === 'file') {
       if (el.files?.length) {report.existing++; continue;}
       const isResume = labels.some(l => /\b(resume|cv)\b/i.test(l)) && !labels.some(l => /cover/i.test(l));
-      if (attachResume && isResume && bundle.approved === true && bundle.document?.base64) {
+      if (attachResume && isResume && (bundle.approved === true || bundle.generatedForJob === true) && bundle.document?.base64) {
         const mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
         const accepted = (el.accept || '').toLowerCase().split(',').map(x=>x.trim());
         if (el.accept && !accepted.some(x => ['.docx',mime,'application/*','*/*'].includes(x))) {

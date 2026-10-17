@@ -1,4 +1,4 @@
-"""Resume preparation; personal profiles are stored in the user's browser."""
+"""Resume preparation and single-user, local applicant profile APIs."""
 import base64
 import io
 import os
@@ -7,9 +7,11 @@ import zipfile
 
 import openai
 from docx import Document
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
+
+from backend.candidate import Candidate, candidate_path, read_candidate, require_local_client, validate_job_url, write_candidate
 
 router = APIRouter()
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -94,7 +96,54 @@ async def resume_document(request: ExportRequest):
 async def extension_zip():
     output = io.BytesIO()
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for name in ('manifest.json', 'popup.html', 'popup.js', 'fill.js', 'README.md'):
+        for name in ('manifest.json', 'popup.html', 'popup.js', 'config.js', 'autofill.html', 'autofill.js', 'ui.css', 'job.js', 'fill.js', 'README.md'):
             archive.write(ROOT / 'extension' / name, name)
     return Response(output.getvalue(), media_type='application/zip',
                     headers={'Content-Disposition': 'attachment; filename="JobMatchAI-extension.zip"'})
+
+
+class AutofillRequest(BaseModel):
+    job_description: str = Field(min_length=80, max_length=30000)
+    job_url: str = Field(default='', max_length=2048)
+
+
+@router.get('/candidate', dependencies=[Depends(require_local_client)])
+async def get_candidate():
+    candidate = read_candidate()
+    return {**candidate.model_dump(), 'ready': bool(candidate.resume.strip()),
+            'aiConfigured': bool(os.getenv('OPENAI_API_KEY') or os.getenv('JOBMATCH_OPENAI_API_KEY'))}
+
+
+@router.put('/candidate', dependencies=[Depends(require_local_client)])
+async def save_candidate(candidate: Candidate):
+    try:
+        write_candidate(candidate)
+    except OSError:
+        raise HTTPException(503, 'Could not save your profile to the local data folder.') from None
+    return {'saved': True, 'ready': bool(candidate.resume.strip())}
+
+
+@router.delete('/candidate', dependencies=[Depends(require_local_client)])
+async def delete_candidate():
+    try:
+        candidate_path().unlink(missing_ok=True)
+    except OSError:
+        raise HTTPException(503, 'Could not remove the saved profile.') from None
+    return {'deleted': True}
+
+
+@router.post('/autofill', dependencies=[Depends(require_local_client)])
+async def prepare_autofill(request: AutofillRequest):
+    validate_job_url(request.job_url)
+    candidate = read_candidate()
+    if not candidate.resume.strip():
+        raise HTTPException(409, 'Save your base resume in the Apply workspace once, then try again.')
+    if len(request.job_description.strip()) < 80:
+        raise HTTPException(400, 'Select the full job description or open the job posting before autofilling.')
+    result = await tailor(TailorRequest(resume=candidate.resume, job_description=request.job_description))
+    if len(result.resume) > 40000:
+        raise HTTPException(502, 'The tailored resume is too long. Please try a shorter base resume.')
+    document = await resume_document(ExportRequest(resume=result.resume))
+    return {'profile': candidate.profile, 'resume': result.resume, 'changes': result.changes,
+            'questions': result.questions, 'document': document, 'generatedForJob': True,
+            'jobUrl': request.job_url}

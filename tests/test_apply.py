@@ -25,16 +25,16 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
     async def test_apply_and_extension_download(self):
         response = await self.client.get('/')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('Your next application', response.text)
+        self.assertIn('Their next hire.', response.text)
         response = await self.client.get('/analysis')
         self.assertEqual(response.status_code, 200)
         self.assertIn('Apply workspace', response.text)
         response = await self.client.get('/apply')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('Your next application', response.text)
+        self.assertIn('Their next hire.', response.text)
         response = await self.client.get('/extension.zip')
         with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-            self.assertEqual(set(z.namelist()), {'manifest.json','popup.html','popup.js','fill.js','README.md'})
+            self.assertEqual(set(z.namelist()), {'manifest.json','popup.html','popup.js','config.js','autofill.html','autofill.js','ui.css','job.js','fill.js','README.md'})
 
     async def test_document_round_trip(self):
         response = await self.client.post('/resume-document', json={'resume':'Jonathan Deng\nExperience\nBuilt APIs'})
@@ -69,3 +69,85 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn('Backend job', args['input'])
                 self.assertIn('Never invent', args['instructions'])
                 if completed:self.assertEqual(response.json()['questions'], ['Confirm availability'])
+
+
+class SavedCandidateTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        import tempfile
+        self.directory = tempfile.TemporaryDirectory()
+        self.env = patch.dict(os.environ, {'JOBMATCH_DATA_DIR': self.directory.name})
+        self.env.start()
+        self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://127.0.0.1:8000')
+        self.candidate = {'profile': {'firstName': 'Alex', 'email': 'alex@example.test'},
+                          'resume': 'Base resume with Python APIs', 'resumeName': 'resume.txt'}
+
+    async def asyncTearDown(self):
+        await self.client.aclose()
+        self.env.stop()
+        self.directory.cleanup()
+
+    async def test_persistence_is_available_to_new_sessions_and_can_be_deleted(self):
+        response = await self.client.put('/candidate', json=self.candidate)
+        self.assertTrue(response.json()['saved'])
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://127.0.0.1:8000') as new_session:
+            saved = (await new_session.get('/candidate')).json()
+        self.assertTrue(saved['ready'])
+        self.assertEqual(saved['resume'], self.candidate['resume'])
+        self.assertEqual(saved['profile']['email'], 'alex@example.test')
+        self.assertEqual((await self.client.delete('/candidate')).status_code, 200)
+        self.assertFalse((await self.client.get('/candidate')).json()['ready'])
+
+    async def test_each_job_uses_the_base_resume_without_replacing_it(self):
+        await self.client.put('/candidate', json=self.candidate)
+        result = TailoredResume(resume='Tailored resume', changes=[], questions=['Check dates'])
+        with patch('backend.apply.tailor', new=AsyncMock(return_value=result)) as tailor:
+            for url in ['https://jobs.lever.co/example/123', 'https://job-boards.greenhouse.io/example/jobs/456']:
+                response = await self.client.post('/autofill', json={'job_description':'Python engineering role with API development and teamwork. '*3, 'job_url':url})
+                self.assertEqual(response.status_code, 200)
+                bundle = response.json()
+                self.assertTrue(bundle['generatedForJob'])
+                self.assertNotIn('approved', bundle)
+                self.assertEqual(bundle['profile'], self.candidate['profile'])
+                doc = Document(io.BytesIO(base64.b64decode(bundle['document']['base64'])))
+                self.assertEqual(doc.paragraphs[0].text, 'Tailored resume')
+                self.assertEqual(tailor.call_args.args[0].resume, self.candidate['resume'])
+        self.assertEqual((await self.client.get('/candidate')).json()['resume'], self.candidate['resume'])
+
+    async def test_autofill_requires_saved_resume_and_valid_job(self):
+        response = await self.client.post('/autofill', json={'job_description':'job '*30})
+        self.assertEqual(response.status_code, 409)
+        await self.client.put('/candidate', json=self.candidate)
+        for url in ['https://evil.example/jobs/1', 'https://jobs.lever.co.evil.example/1', 'http://jobs.lever.co/1', 'https://name:password@jobs.lever.co/1']:
+            response = await self.client.post('/autofill', json={'job_description':'job '*30, 'job_url':url})
+            self.assertEqual(response.status_code, 400)
+        response = await self.client.post('/autofill', json={'job_description':'short'})
+        self.assertEqual(response.status_code, 422)
+
+    async def test_other_websites_cannot_access_private_data_or_start_autofill(self):
+        await self.client.put('/candidate', json=self.candidate)
+        for method, path, payload in [('GET','/candidate',None), ('PUT','/candidate',self.candidate),
+                                      ('DELETE','/candidate',None), ('POST','/autofill',{'job_description':'job '*30})]:
+            response = await self.client.request(method, path, json=payload, headers={'Origin':'https://evil.example'})
+            self.assertEqual(response.status_code, 403)
+        response = await self.client.get('/candidate', headers={'Host':'rebinding.example'})
+        self.assertEqual(response.status_code, 403)
+        response = await self.client.get('/candidate', headers={'Origin':'null'})
+        self.assertEqual(response.status_code, 403)
+        response = await self.client.get('/candidate', headers={'Origin':'chrome-extension://'+'a'*32})
+        self.assertEqual(response.status_code, 200)
+
+    async def test_corrupt_profile_is_reported_without_overwriting_it(self):
+        from backend.candidate import candidate_path
+        candidate_path().write_text('broken json')
+        response = await self.client.get('/candidate')
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(candidate_path().read_text(), 'broken json')
+
+
+    async def test_oversized_generated_resume_is_not_attached_or_saved(self):
+        await self.client.put('/candidate', json=self.candidate)
+        result = TailoredResume(resume='x' * 40001, changes=[], questions=[])
+        with patch('backend.apply.tailor', new=AsyncMock(return_value=result)):
+            response = await self.client.post('/autofill', json={'job_description':'job '*30})
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual((await self.client.get('/candidate')).json()['resume'], self.candidate['resume'])
