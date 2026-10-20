@@ -13,6 +13,19 @@ const JobMatchApi = {
     const {appOrigin} = await chrome.storage.local.get('appOrigin');
     return this.validateOrigin(appOrigin || this.defaultOrigin);
   },
+  error(message, code) {
+    const error = new Error(message); error.code = code; return error;
+  },
+  incompatible(origin) {
+    return this.error(`A server is responding at ${origin}, but it is not the current JobMatch AI app. Stop the old server, pull the latest code, and run python run.py from the JobMatchAI folder. If using another port, update Connection settings in the extension popup.`, 'INCOMPATIBLE_SERVER');
+  },
+  async checkConnection() {
+    const identity = await this.request('/health');
+    if (identity.service !== 'jobmatch-ai' || identity.apiVersion !== 2 ||
+        !Array.isArray(identity.features) || !identity.features.includes('saved-profile') || !identity.features.includes('tailored-autofill')) {
+      throw this.incompatible(await this.origin());
+    }
+  },
   async request(path, data) {
     const origin = await this.origin();
     let response;
@@ -21,13 +34,17 @@ const JobMatchApi = {
         method: data === undefined ? 'GET' : 'POST',
         headers: data === undefined ? {} : {'Content-Type':'application/json'},
         body: data === undefined ? undefined : JSON.stringify(data),
-        signal: AbortSignal.timeout(180000),
+        signal: AbortSignal.timeout(path === '/health' || path === '/candidate' ? 5000 : 180000),
       });
     } catch (error) {
-      if (error.name === 'TimeoutError') throw Error('Tailoring took too long. Check the local app terminal and try again.');
-      throw Error('Cannot reach JobMatch AI. Start python run.py, and check the app address in extension settings.');
+      if (error.name === 'TimeoutError' && path !== '/health' && path !== '/candidate') throw Error('Tailoring took too long. Check the local app terminal and try again.');
+      throw this.error(`Cannot reach JobMatch AI at ${origin}. Start python run.py, and check the app address in the extension popup’s Connection settings.`, 'OFFLINE');
     }
-    const body = await response.json();
+    if (response.status === 404) throw this.incompatible(origin);
+    let body;
+    try {body = await response.json();}
+    catch {throw this.incompatible(origin);}
+    if (!body || typeof body !== 'object') throw this.incompatible(origin);
     if (!response.ok) throw Error(typeof body.detail === 'string' ? body.detail : 'The local app could not complete this request.');
     return body;
   }

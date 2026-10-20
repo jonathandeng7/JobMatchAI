@@ -181,6 +181,28 @@ const assert = require('assert');
     await popup.locator('#saveOrigin').click();
     await popup.waitForFunction(()=>document.getElementById('status').textContent.includes('local app address only'));
     console.log('PASS extension connection settings reject external app addresses');
+    await ctx.route('**/health',r=>r.fulfill({status:404,json:{detail:'Not Found'}}));
+    await popup.reload();
+    await popup.waitForFunction(()=>document.getElementById('profile').textContent==='Wrong or outdated server at this address');
+    assert.equal(await popup.locator('#fill').isDisabled(),true);
+    assert((await popup.locator('#status').textContent()).includes('Stop the old server'));
+    assert(!(await popup.locator('#profile').textContent()).includes('offline'));
+    console.log('PASS reachable server with missing routes is diagnosed as wrong/outdated, with restart instructions');
+    await ctx.unroute('**/health');
+    await ctx.route('**/health',r=>r.fulfill({contentType:'text/html',body:'Unrelated local website'}));
+    await popup.reload();
+    await popup.waitForFunction(()=>document.getElementById('profile').textContent==='Wrong or outdated server at this address');
+    console.log('PASS unrelated HTML server is identified without a JSON parsing error');
+    await ctx.unroute('**/health');
+    await ctx.route('**/health',r=>r.fulfill({json:{service:'jobmatch-ai',apiVersion:2,features:{}}}));
+    await popup.reload();
+    await popup.waitForFunction(()=>document.getElementById('profile').textContent==='Wrong or outdated server at this address');
+    console.log('PASS malformed health metadata is diagnosed without a TypeError');
+    await ctx.unroute('**/health');
+    await ctx.route('**/health',r=>r.abort());
+    await popup.reload();
+    await popup.waitForFunction(()=>document.getElementById('profile').textContent==='Local workspace offline');
+    console.log('PASS unreachable local app is distinguished from a reachable incompatible server');
     console.log('NOTE: Chrome APIs were bridged in fixtures. Actual unpacked-extension installation remains a manual check due to managed-browser policy.');
   } catch (error) {console.error(error);process.exitCode=1;}
   finally {await ctx.close();fs.rmSync(temp,{recursive:true,force:true});}

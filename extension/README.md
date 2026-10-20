@@ -1,4 +1,4 @@
-# JobMatch AI Chrome extension (v0.2)
+# JobMatch AI Chrome extension (v0.2.1)
 
 ## One-time setup
 
@@ -33,3 +33,7 @@ The local app stores your base resume/profile in `.local/candidate.json` (ignore
 The extension uses `activeTab` and `scripting` to access the application you invoke it on, `storage` for its connection address, and HTTP host access only to loopback addresses for the local app. It has no permanent Greenhouse/Lever site permissions. Keep the app loopback-only for this single-user workflow.
 
 Browser fixture tests cover the pipeline with synthetic profiles and bridged Chrome APIs. The managed cloud browser blocks installing unpacked extensions, so real installation/popup permission behavior and compatibility with live employer forms still require manual verification in your Chrome.
+
+## If the popup says “Not Found” / “Wrong or outdated server”
+
+The app address is reachable but the running server does not expose the current JobMatch AI API. Pull the latest repository and stop/restart the old app. You can avoid a stale process on port 8000 by running `python run.py --port 8001`, then setting **Connection settings** to `http://127.0.0.1:8001`. The app and extension must use the same address. Reload the updated extension and refresh the job tab. A working `/health` endpoint identifies `jobmatch-ai` with API version 2. See the root README for recovery steps.

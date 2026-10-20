@@ -4,7 +4,9 @@ async function connect() {
   $('fill').disabled = true;
   const origin = await JobMatchApi.origin();
   $('appOrigin').value = origin; $('workspace').href = origin + '/';
+  await JobMatchApi.checkConnection();
   const saved = await JobMatchApi.request('/candidate');
+  if (!saved.profile || typeof saved.ready !== 'boolean' || typeof saved.aiConfigured !== 'boolean') throw JobMatchApi.incompatible(origin);
   const name = [saved.profile.firstName, saved.profile.lastName].filter(Boolean).join(' ') || 'Your profile';
   $('profile').textContent = saved.ready ? `${name} · Base resume saved` : 'Save your resume once in the Apply workspace.';
   $('fill').disabled = !saved.ready || !saved.aiConfigured;
@@ -16,7 +18,7 @@ $('saveOrigin').onclick = async () => {
   try {
     const origin = JobMatchApi.validateOrigin($('appOrigin').value.trim());
     await chrome.storage.local.set({appOrigin:origin}); await connect();
-  } catch (e) {status(e.message,true);}
+  } catch (e) {connectionError(e);}
 };
 $('fill').onclick = async () => {
   $('fill').disabled = true;
@@ -31,4 +33,11 @@ $('fill').onclick = async () => {
     window.close();
   } catch (e) {status(e.message,true); $('fill').disabled=false;}
 };
-connect().catch(e => {$('profile').textContent='Local workspace offline';status(e.message,true);});
+function connectionError(error) {
+  $('fill').disabled = true;
+  $('appOrigin').closest('details').open = true;
+  $('profile').textContent = error.code === 'INCOMPATIBLE_SERVER' ? 'Wrong or outdated server at this address' :
+    error.code === 'OFFLINE' ? 'Local workspace offline' : 'Workspace needs attention';
+  status(error.message, true);
+}
+connect().catch(connectionError);

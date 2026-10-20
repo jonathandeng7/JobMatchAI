@@ -110,15 +110,21 @@ The backend tests cover streaming analysis, structured tailoring, profile persis
 
 Your base resume/profile is saved to `.local/candidate.json` in the repository folder, which Git ignores. `JOBMATCH_DATA_DIR` can point to a different private data folder. Keep this single-user app bound to loopback; it is not a shared hosted profile service. Browser drafts are also kept locally for recovery. **Delete saved information** removes the app copy and this browser's backup. Resume uploads go to the app for parsing; tailoring sends resume/job text to OpenAI. Generated drafts do not replace your base resume. Keep profile JSON, resumes, backups, keys, and browser data out of Git. DOCX export uses simple paragraphs and does not preserve the original PDF layout.
 
-## Updating an existing checkout / fixing a 404 on Apply
+## Fixing “Not Found” or extension connection errors
 
-Stop your running server with **Ctrl+C**, then from your `JobMatchAI` folder:
+If both the home page and the extension return **Not Found**, a server is responding at that address but does not have the current JobMatch AI routes. This usually means a stale process, an older checkout, or another local app is using that port. It is not an OpenAI API key error.
+
+1. Stop the old app terminal with **Ctrl+C**, if you know which terminal owns it.
+2. From your actual `JobMatchAI` repository folder, update and start on a free port:
 
 ```bash
 git pull --ff-only origin main
-# Activate your virtual environment as above, then:
-python -m pip install -r backend/requirements.txt
-python run.py
+python run.py --port 8001
 ```
 
-If `/apply` previously showed `{"detail":"Not Found"}`, an older checkout or server process may have been running. Restart after pulling and use the home page. Confirm you started from this repository root; if port 8000 is still occupied, stop the old server or use `python run.py --port 8001`.
+3. Open the address printed by the launcher. In the extension, expand **Connection settings**, set the address to `http://127.0.0.1:8001`, and click **Save address & reconnect**. The browser and extension must point to the same port.
+4. Reload the updated extension at `chrome://extensions`. If installed from a ZIP, replace the extracted files with the latest download first. Refresh the job page.
+
+The launcher prints its source folder, reserves the selected port, and reports a useful error if another process is already using it. It never stops unrelated processes. To check the app directly, open `/health` at its local address: the response must contain `"service":"jobmatch-ai"`, `"apiVersion":2`, and the saved-profile/autofill features. The home page and `/candidate` must both exist. The extension distinguishes an offline app from a reachable wrong/outdated server.
+
+You can continue using port 8000 when it is available; use that same port in the extension. After changing `.env`, restart the app. Saved resumes/profiles remain in `.local` when you switch ports.

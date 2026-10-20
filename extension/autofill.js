@@ -19,6 +19,7 @@ async function run() {
   if (!job?.jobDescription) throw Error('Could not read this job. Select its description or open the full posting, then retry.');
   $('jobTitle').textContent=job.title;
   step('readStep','done');step('tailorStep','active');status('Tailoring your saved base resume to this job…');
+  await JobMatchApi.checkConnection();
   const bundle=await JobMatchApi.request('/autofill',{job_description:job.jobDescription,job_url:job.url});
   documentData=bundle.document;
   $('resume').value=bundle.resume;

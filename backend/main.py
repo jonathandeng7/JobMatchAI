@@ -15,6 +15,13 @@ load_dotenv()
 
 app = FastAPI(title="JobMatch AI")
 
+
+@app.get("/health")
+async def health():
+    return {"service": "jobmatch-ai", "apiVersion": 2,
+            "features": ["apply-workspace", "saved-profile", "tailored-autofill"]}
+
+
 FRONTEND_PATH = pathlib.Path(__file__).parent.parent / "frontend" / "index.html"
 
 SYSTEM_PROMPT = """You are an expert resume consultant specializing in software engineering internship applications. You help candidates tailor their resumes to specific job descriptions with precision and honesty.

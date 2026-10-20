@@ -22,6 +22,11 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.client.aclose()
 
+    async def test_health_identifies_the_app_without_private_data(self):
+        response = await self.client.get('/health')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'service':'jobmatch-ai', 'apiVersion':2, 'features':['apply-workspace','saved-profile','tailored-autofill']})
+
     async def test_apply_and_extension_download(self):
         response = await self.client.get('/')
         self.assertEqual(response.status_code, 200)
