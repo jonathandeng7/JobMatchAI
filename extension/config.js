@@ -17,28 +17,28 @@ const JobMatchApi = {
     const error = new Error(message); error.code = code; return error;
   },
   incompatible(origin) {
-    return this.error(`A server is responding at ${origin}, but it is not the current JobMatch AI app. Stop the old server, pull the latest code, and run python run.py from the JobMatchAI folder. If using another port, update Connection settings in the extension popup.`, 'INCOMPATIBLE_SERVER');
+    return this.error(`A server is responding at ${origin}, but it is not the current JobMatch AI app. Stop the old server, pull the latest code, and run python run.py from the JobMatchAI folder. If using another port, update Connection settings in the extension panel.`, 'INCOMPATIBLE_SERVER');
   },
   async checkConnection() {
     const identity = await this.request('/health');
     if (identity.service !== 'jobmatch-ai' || identity.apiVersion !== 2 ||
-        !Array.isArray(identity.features) || !identity.features.includes('saved-profile') || !identity.features.includes('tailored-autofill')) {
+        !Array.isArray(identity.features) || !identity.features.includes('saved-profile') || !identity.features.includes('tailored-autofill') || !identity.features.includes('saved-autofill')) {
       throw this.incompatible(await this.origin());
     }
   },
-  async request(path, data) {
+  async request(path, data, method = data === undefined ? 'GET' : 'POST') {
     const origin = await this.origin();
     let response;
     try {
       response = await fetch(origin + path, {
-        method: data === undefined ? 'GET' : 'POST',
-        headers: data === undefined ? {} : {'Content-Type':'application/json'},
-        body: data === undefined ? undefined : JSON.stringify(data),
+        method,
+        headers: data === undefined || data instanceof FormData ? {} : {'Content-Type':'application/json'},
+        body: data === undefined ? undefined : data instanceof FormData ? data : JSON.stringify(data),
         signal: AbortSignal.timeout(path === '/health' || path === '/candidate' ? 5000 : 180000),
       });
     } catch (error) {
       if (error.name === 'TimeoutError' && path !== '/health' && path !== '/candidate') throw Error('Tailoring took too long. Check the local app terminal and try again.');
-      throw this.error(`Cannot reach JobMatch AI at ${origin}. Start python run.py, and check the app address in the extension popup’s Connection settings.`, 'OFFLINE');
+      throw this.error(`Cannot reach JobMatch AI at ${origin}. Start python run.py, and check the app address in the extension panel’s Connection settings.`, 'OFFLINE');
     }
     if (response.status === 404) throw this.incompatible(origin);
     let body;

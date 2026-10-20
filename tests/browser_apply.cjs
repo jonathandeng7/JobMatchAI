@@ -18,13 +18,13 @@ const assert = require('assert');
   const initial = {profile:{firstName:'Alex',lastName:'Sample',email:'alex@example.test',phone:'555-0100',
     github:'https://github.com/example',linkedin:'https://www.linkedin.com/in/example',sponsorship:'No sponsorship required'},
     resume:'Alex Sample\nBuilt Python APIs and reliable services.',resumeName:'resume.txt'};
-  let bundle;
+  let bundle, aiConfigured=true;
   try {
     await ctx.route('**/candidate', async route => {
       const method = route.request().method();
       if (method === 'PUT') { saved = route.request().postDataJSON(); return route.fulfill({json:{saved:true,ready:!!saved.resume}}); }
       if (method === 'DELETE') {saved={profile:{},resume:'',resumeName:'My resume'};return route.fulfill({json:{deleted:true}});}
-      return route.fulfill({json:{...saved,ready:!!saved.resume,aiConfigured:true}});
+      return route.fulfill({json:{...saved,ready:!!saved.resume,aiConfigured}});
     });
     const page = await ctx.newPage();
     // Existing browser-only profiles migrate automatically, without a repeat upload.
@@ -103,106 +103,124 @@ const assert = require('assert');
     const capture=await form.evaluate(()=>jobmatchJobContext());
     assert(capture.jobDescription.includes('Python'));assert(!capture.jobDescription.includes('Do you require sponsorship'));
 
-    // Exercise the actual persistent extension flow, with Chrome APIs bridged to
-    // a real fixture tab. Managed Chromium prevents installing unpacked extensions.
+    // The real side-panel scripts run against a form fixture with bridged
+    // Chrome APIs; actual installation is blocked by managed-browser policy.
     await ctx.route(app+'/__extension/**',route=>{
       const name=new URL(route.request().url()).pathname.split('/').pop();
-      const file=path.join(extension,name);
-      if(!['autofill.html','autofill.js','popup.html','popup.js','ui.css','config.js'].includes(name))return route.abort();
-      return route.fulfill({path:file,contentType:name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':'text/html'});
+      if(!['panel.html','panel.js','panel.css','config.js'].includes(name))return route.abort();
+      return route.fulfill({path:path.join(extension,name),contentType:name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':'text/html'});
     });
-    async function progressPage(attach=true) {
-      const progress=await ctx.newPage();
-      await progress.exposeFunction('executeOnJob',async details=>{
-        if(details.files){for(const file of details.files)await form.addScriptTag({path:path.join(extension,file)});return[];}
-        const result=await form.evaluate(async details=>{
-          const fn=(0,eval)('('+details.source+')');return fn(...(details.args||[]));
-        },details);
-        return[{result}];
-      });
-      await progress.addInitScript(origin=>{
-        window.chrome={storage:{local:{get:async()=>({appOrigin:origin})}},
-          scripting:{executeScript:details=>window.executeOnJob({files:details.files,source:details.func?.toString(),args:details.args})},
-          tabs:{update:async()=>{window.returnedToJob=true;}}};
-      },app);
-      await progress.goto(app+'/__extension/autofill.html?tab=42&attach='+attach);
-      return progress;
-    }
-    const progress=await progressPage();
-    await progress.waitForFunction(()=>document.getElementById('heading').textContent==='Your next move is ready.');
+    await ctx.route('**/autofill/saved',route=>route.fulfill({json:{...bundle,profile:saved.profile,resume:saved.resume,changes:[],questions:[],savedResume:true,generatedForJob:false}}));
+    const panel=await ctx.newPage();
+    await panel.setViewportSize({width:390,height:940});
+    await panel.exposeFunction('getActiveJob',async()=>({id:42,url:form.url(),title:await form.title()}));
+    await panel.exposeFunction('executeOnJob',async details=>{
+      if(details.files){for(const file of details.files)await form.addScriptTag({path:path.join(extension,file)});return[];}
+      const result=await form.evaluate(async details=>{const fn=(0,eval)('('+details.source+')');return fn(...(details.args||[]));},details);
+      return[{result}];
+    });
+    await panel.addInitScript(origin=>{
+      window.createdTabs=0;
+      window.chrome={storage:{local:{get:async()=>({appOrigin:origin}),set:async()=>{}}},
+        scripting:{executeScript:details=>window.executeOnJob({files:details.files,source:details.func?.toString(),args:details.args})},
+        tabs:{query:async()=>[await window.getActiveJob()],create:async()=>{window.createdTabs++;},
+          onActivated:{addListener:fn=>{window.activateJob=fn;}},onUpdated:{addListener:()=>{}}}};
+    },app);
+    await panel.goto(app+'/__extension/panel.html');
+    await panel.waitForFunction(()=>!document.getElementById('fill').disabled);
+    await panel.getByRole('button',{name:'Autofill with my information →'}).click();
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Autofill complete'));
     assert.equal(await form.locator('#first').inputValue(),'Alex');
     assert.equal(await form.locator('#email').inputValue(),'existing@example.test');
     assert.equal(await form.locator('#github').inputValue(),'https://github.com/example');
     assert.equal(await form.locator('#sponsor').inputValue(),'');assert.equal(await form.locator('#company').inputValue(),'');
     assert.equal(await form.locator('#consent').isChecked(),false);assert.equal(await form.evaluate(()=>window.submitted),false);
     assert.equal(await form.locator('#resume').evaluate(e=>e.files[0].name),'resume.docx');
-    assert.equal(await progress.evaluate(()=>window.returnedToJob),true);
-    assert.equal(await progress.locator('#changes img').count(),0);
-    console.log('PASS one-click orchestration: capture → tailor saved resume → attach DOCX → autofill → return to job');
-    await form.goto('https://jobs.lever.co/example/job-2');
-    const lever=await progressPage(false);
-    await lever.waitForFunction(()=>document.getElementById('heading').textContent==='Your next move is ready.');
-    assert.equal(await form.locator('#first').inputValue(),'Alex');assert.equal(await form.locator('#resume').evaluate(e=>e.files.length),0);
-    console.log('PASS Lever autofill, opt-out of attachment, preservation of answers/consent, no submission');
+    assert.equal(await panel.evaluate(()=>window.createdTabs),0);
+    await panel.locator('#resumeTab').click();
+    assert.equal(await panel.locator('#draft').inputValue(),bundle.resume);
+    assert.equal(await panel.locator('#changes img').count(),0);
+    assert(await panel.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    if(process.env.PANEL_SCREENSHOT_PATH)await panel.screenshot({path:process.env.PANEL_SCREENSHOT_PATH,fullPage:true});
+    console.log('PASS side-panel capture, tailoring, resume preview, attachment and autofill without opening tabs');
+
+    await form.goto('https://jobs.lever.co/example/job-2');await panel.evaluate(()=>window.activateJob());
+    await panel.locator('#applyTab').click();await panel.locator('#attach').uncheck();
+    await panel.locator('#tailorOnly').click();
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Tailored resume ready'));
+    assert.equal(await panel.locator('#resumeView').isVisible(),true);
+    assert.equal(await form.locator('#first').inputValue(),'');
+    await panel.locator('#draft').fill('Edited reviewed resume');
+    await panel.locator('#applyDraft').click();
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Autofill complete'));
+    assert.equal(await form.locator('#first').inputValue(),'Alex');
+    assert.equal(await form.locator('#resume').evaluate(e=>e.files.length),0);
+    console.log('PASS tailor-only review/edit followed by autofill from the same panel');
+
+    await panel.locator('#profileTab').click();await panel.locator('#phone').fill('555-0188');
+    await panel.waitForFunction(()=>document.getElementById('saveState').textContent==='All changes saved');
+    assert.equal(saved.profile.phone,'555-0188');
+    await panel.locator('#resumeTab').click();
+    await panel.locator('#resumeFile').setInputFiles({name:'panel-resume.txt',mimeType:'text/plain',buffer:Buffer.from('Saved from the extension')});
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Base resume saved'));
+    assert.equal(saved.resume,'Saved from the extension');
+    console.log('PASS profile editing and one-time resume upload/save entirely inside the extension');
 
     await ctx.unroute('**/autofill');
-    await ctx.route('**/autofill',r=>r.fulfill({status:503,json:{detail:'OpenAI key missing'}}));
-    await form.goto('https://jobs.lever.co/example/job-3');
-    const failed=await progressPage();
-    await failed.waitForFunction(()=>document.getElementById('status').textContent==='OpenAI key missing');
-    assert.equal(await form.locator('#first').inputValue(),'');assert.equal(await form.locator('#resume').evaluate(e=>e.files.length),0);
-    console.log('PASS model failure leaves form and resume fields untouched');
+    await ctx.route('**/autofill',r=>r.fulfill({status:429,json:{detail:'OpenAI quota or rate limit exceeded. You can still fill saved information without AI.'}}));
+    await form.goto('https://jobs.lever.co/example/job-3');await panel.evaluate(()=>window.activateJob());
+    await panel.locator('#applyTab').click();await panel.locator('#fill').click();
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.includes('quota or rate limit'));
+    assert.equal(await form.locator('#first').inputValue(),'');
+    const callsBeforeBasic=modelCalls;
+    await panel.locator('#attach').check();
+    await panel.locator('#fillSaved').click();
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Autofill complete'));
+    assert.equal(await form.locator('#first').inputValue(),'Alex');assert.equal(modelCalls,callsBeforeBasic);
+    assert.equal(await form.locator('#resume').evaluate(e=>e.files[0].name),'resume.docx');
+    console.log('PASS quota failure leaves form untouched and saved-information autofill remains available');
 
+    aiConfigured=false;await panel.reload();
+    await panel.waitForFunction(()=>!document.getElementById('fill').disabled);
+    assert.equal(await panel.locator('#tailorBeforeFill').isChecked(),false);
+    assert.equal(await panel.locator('#tailorOnly').isDisabled(),true);
+    await form.goto('https://jobs.lever.co/example/job-4');await panel.evaluate(()=>window.activateJob());
+    await panel.locator('#fill').click();
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Autofill complete'));
+    assert.equal(await form.locator('#first').inputValue(),'Alex');
+    console.log('PASS primary autofill works without an AI key or job tailoring');
+
+    aiConfigured=true;await panel.reload();await panel.waitForFunction(()=>!document.getElementById('fill').disabled);
     await ctx.unroute('**/autofill');
     let release,started;
     const startedPromise=new Promise(resolve=>started=resolve);
     await ctx.route('**/autofill',async r=>{started();await new Promise(resolve=>release=resolve);await r.fulfill({json:bundle});});
-    const changed=await progressPage();await startedPromise;
+    await panel.locator('#fill').click();await startedPromise;
     await form.goto('https://jobs.lever.co/example/different-job');release();
-    await changed.waitForFunction(()=>document.getElementById('status').textContent.includes('page changed'));
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.includes('job page changed'));
     assert.equal(await form.locator('#first').inputValue(),'');
-    console.log('PASS navigating to another job during tailoring prevents stale autofill');
-
-    const popup=await ctx.newPage();
-    await popup.addInitScript(origin=>{
-      window.chrome={storage:{local:{get:async()=>({appOrigin:origin}),set:async()=>{}}},
-        tabs:{query:async()=>[{id:42,url:'https://jobs.lever.co/example/123'}],create:async data=>{window.createdRun=data.url;}},
-        runtime:{getURL:file=>location.origin+'/__extension/'+file}};
-      window.close=()=>{};
-    },app);
-    await popup.goto(app+'/__extension/popup.html');
-    await popup.waitForFunction(()=>!document.getElementById('fill').disabled);
-    await popup.getByRole('button',{name:/Autofill with my information/}).click();
-    const runUrl=await popup.evaluate(()=>window.createdRun);
-    assert(runUrl.includes('autofill.html?tab=42&attach=true'));
-    console.log('PASS popup button starts a persistent autofill run without file imports');
-    await popup.getByText('Connection settings', {exact:true}).click();
-    await popup.locator('#appOrigin').fill('https://external.example');
-    await popup.locator('#saveOrigin').click();
-    await popup.waitForFunction(()=>document.getElementById('status').textContent.includes('local app address only'));
-    console.log('PASS extension connection settings reject external app addresses');
+    console.log('PASS changing jobs while tailoring stops stale autofill');
+    await panel.getByText('Connection settings',{exact:true}).click();
+    await panel.locator('#appOrigin').fill('https://external.example');await panel.locator('#saveOrigin').click();
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.includes('local app address only'));
+    console.log('PASS connection settings reject external addresses');
     await ctx.route('**/health',r=>r.fulfill({status:404,json:{detail:'Not Found'}}));
-    await popup.reload();
-    await popup.waitForFunction(()=>document.getElementById('profile').textContent==='Wrong or outdated server at this address');
-    assert.equal(await popup.locator('#fill').isDisabled(),true);
-    assert((await popup.locator('#status').textContent()).includes('Stop the old server'));
-    assert(!(await popup.locator('#profile').textContent()).includes('offline'));
-    console.log('PASS reachable server with missing routes is diagnosed as wrong/outdated, with restart instructions');
-    await ctx.unroute('**/health');
-    await ctx.route('**/health',r=>r.fulfill({contentType:'text/html',body:'Unrelated local website'}));
-    await popup.reload();
-    await popup.waitForFunction(()=>document.getElementById('profile').textContent==='Wrong or outdated server at this address');
-    console.log('PASS unrelated HTML server is identified without a JSON parsing error');
-    await ctx.unroute('**/health');
-    await ctx.route('**/health',r=>r.fulfill({json:{service:'jobmatch-ai',apiVersion:2,features:{}}}));
-    await popup.reload();
-    await popup.waitForFunction(()=>document.getElementById('profile').textContent==='Wrong or outdated server at this address');
-    console.log('PASS malformed health metadata is diagnosed without a TypeError');
-    await ctx.unroute('**/health');
-    await ctx.route('**/health',r=>r.abort());
-    await popup.reload();
-    await popup.waitForFunction(()=>document.getElementById('profile').textContent==='Local workspace offline');
-    console.log('PASS unreachable local app is distinguished from a reachable incompatible server');
+    await panel.reload();
+    await panel.waitForFunction(()=>document.getElementById('connection').textContent==='Wrong or outdated server');
+    assert.equal(await panel.locator('#fill').isDisabled(),true);
+    console.log('PASS wrong-server error stays actionable inside the panel');
+    await ctx.unroute('**/health');await ctx.route('**/health',r=>r.abort());
+    await panel.reload();await panel.waitForFunction(()=>document.getElementById('connection').textContent==='Local app offline');
+    console.log('PASS offline local-app error is distinct from wrong-server errors');
+
+    const manifest=JSON.parse(fs.readFileSync(path.join(extension,'manifest.json')));
+    assert.equal(manifest.side_panel.default_path,'panel.html');assert(!manifest.action.default_popup);
+    let onClick,opened;
+    require('vm').runInNewContext(fs.readFileSync(path.join(extension,'background.js'),'utf8'),{
+      chrome:{action:{onClicked:{addListener:fn=>onClick=fn}},sidePanel:{open:async value=>{opened=value;}}},console});
+    onClick({windowId:7});assert.equal(opened.windowId,7);
+    assert.equal(await panel.evaluate(()=>window.createdTabs),0);
+    console.log('PASS toolbar opens the side panel and the workflow never creates an extension tab');
     console.log('NOTE: Chrome APIs were bridged in fixtures. Actual unpacked-extension installation remains a manual check due to managed-browser policy.');
   } catch (error) {console.error(error);process.exitCode=1;}
   finally {await ctx.close();fs.rmSync(temp,{recursive:true,force:true});}

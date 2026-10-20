@@ -52,7 +52,7 @@ async def tailor(request: TailorRequest):
     if not key:
         raise HTTPException(503, 'Configure an OpenAI API key in environment settings to tailor resumes.')
     try:
-        async with openai.AsyncOpenAI(api_key=key) as client:
+        async with openai.AsyncOpenAI(api_key=key, max_retries=0) as client:
             response = await client.responses.parse(
                 model=os.getenv('JOBMATCH_OPENAI_MODEL', 'gpt-5'),
                 max_output_tokens=10000,
@@ -73,8 +73,12 @@ async def tailor(request: TailorRequest):
         return response.output_parsed
     except openai.AuthenticationError:
         raise HTTPException(502, 'OpenAI rejected the API key. Check environment settings.') from None
-    except openai.RateLimitError:
-        raise HTTPException(502, 'OpenAI quota or rate limit exceeded. Check API billing.') from None
+    except openai.RateLimitError as error:
+        if getattr(error, 'code', None) == 'insufficient_quota':
+            detail = 'OpenAI API credits or quota are exhausted. Check API billing and project budgets. You can still fill saved information without AI.'
+        else:
+            detail = 'OpenAI quota or rate limit exceeded. Check API billing or retry later. You can still fill saved information without AI.'
+        raise HTTPException(429, detail) from None
     except openai.APIError:
         raise HTTPException(502, 'OpenAI could not tailor the resume. Please retry.') from None
 
@@ -96,7 +100,7 @@ async def resume_document(request: ExportRequest):
 async def extension_zip():
     output = io.BytesIO()
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for name in ('manifest.json', 'popup.html', 'popup.js', 'config.js', 'autofill.html', 'autofill.js', 'ui.css', 'job.js', 'fill.js', 'README.md'):
+        for name in ('manifest.json', 'background.js', 'panel.html', 'panel.js', 'config.js', 'panel.css', 'job.js', 'fill.js', 'README.md'):
             archive.write(ROOT / 'extension' / name, name)
     return Response(output.getvalue(), media_type='application/zip',
                     headers={'Content-Disposition': 'attachment; filename="JobMatchAI-extension.zip"'})
@@ -147,3 +151,19 @@ async def prepare_autofill(request: AutofillRequest):
     return {'profile': candidate.profile, 'resume': result.resume, 'changes': result.changes,
             'questions': result.questions, 'document': document, 'generatedForJob': True,
             'jobUrl': request.job_url}
+
+
+class SavedAutofillRequest(BaseModel):
+    job_url: str = Field(default='', max_length=2048)
+
+
+@router.post('/autofill/saved', dependencies=[Depends(require_local_client)])
+async def prepare_saved_autofill(request: SavedAutofillRequest):
+    validate_job_url(request.job_url)
+    candidate = read_candidate()
+    # Contact-only filling works even before a resume or OpenAI key is added.
+    if not any(value.strip() for value in candidate.profile.values()) and not candidate.resume.strip():
+        raise HTTPException(409, 'Add your profile or resume in the extension first.')
+    document = await resume_document(ExportRequest(resume=candidate.resume)) if candidate.resume.strip() else None
+    return {'profile': candidate.profile, 'resume': candidate.resume, 'changes': [],
+            'questions': [], 'document': document, 'savedResume': True, 'jobUrl': request.job_url}

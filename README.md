@@ -15,29 +15,38 @@ Existing browser-only profiles migrate automatically when you first open the upd
 
 AI features require `OPENAI_API_KEY` in your local `.env` file. Set `JOBMATCH_OPENAI_MODEL` optionally; the default is `gpt-5`. The app is configured for local development; Vercel-specific files have been removed. An existing Vercel project must be disconnected or deleted separately in the Vercel dashboard to stop hosted deployments.
 
-## Install and use the Chrome extension
+## Use the extension side panel
 
-Install once:
+Keep the local app running without opening a browser page:
 
-1. Click **Get Chrome extension** in the app header and extract the ZIP to a permanent folder. Alternatively, use this repository's `extension` folder.
-2. In Chrome, open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the folder containing `manifest.json`.
-3. Pin **JobMatch AI Autofill**. This version needs access to the local app (`127.0.0.1` / `localhost`) to read the saved profile and request tailored resumes. It still uses temporary active-tab access on job sites.
+```bash
+python run.py --no-browser
+```
 
-For each application:
+The local app still stores your profile and API key and makes OpenAI requests. All normal application work happens inside the extension; the web workspace is optional.
 
-1. Keep the local app running with `python run.py`.
-2. Open the actual Greenhouse (`*.greenhouse.io`) or Lever (`jobs.lever.co`) job application.
-3. Open the extension and click **Autofill with my information**.
-4. A progress tab reads the job, tailors your saved base resume, generates a DOCX, and fills common empty application fields. By default it attaches the tailored DOCX to an empty resume field; uncheck the attachment option first if you prefer manual upload. Attaching can immediately upload the file to the recruiting site.
-5. The extension returns you to the application. Review the filled answers and resume before submitting. The progress tab remains open with the resume, download button, changes, and unresolved fields/questions.
+### Install / update once
 
-No repeated resume uploads, job pasting, or per-application JSON transfers are required. The progress tab stays open during generation so closing the small extension popup does not interrupt it. If the page changes to a different URL during tailoring, the extension stops before filling it. If no full job description is found, open the full posting or select the description before retrying.
+1. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and choose this repository's `extension` folder. Chrome 116 or later is required. Alternatively, download `/extension.zip` from the local app and extract it first.
+2. Pin **JobMatch AI Autofill** using Chrome's Extensions menu.
+3. For an existing installation, run `git pull`, click Reload at `chrome://extensions`, accept the new side-panel permission if prompted, and refresh the job tab. If you installed from a ZIP, replace the files first. Your saved resume/profile remains in `.local`.
+4. Click the extension icon on your Greenhouse or Lever job tab. A side panel opens next to the application; no progress tab or popup is created.
+5. In **Connection settings** inside the panel, use the same local address/port as your server (default `http://127.0.0.1:8000`). Only local HTTP addresses are accepted.
 
-The app must be reachable at `http://127.0.0.1:8000` by default. For a different port, open **Connection settings** in the extension and save your local app address. The extension only connects to local HTTP addresses; the OpenAI key stays in the app's `.env`, never in the extension.
+### Everything in the panel
 
-To update an existing extension, pull this repository (or replace the extracted files with a fresh ZIP), click its reload button at `chrome://extensions`, and refresh the job page. Chrome may ask you to accept the new local-app permissions. Keep the extension folder on disk.
+- **Apply:** Click **Autofill with my information** to tailor your saved resume for the current job and fill common empty fields. Uncheck **Tailor my saved resume for this job**, or click **Fill saved information without AI**, to fill from your saved profile and unchanged base resume with no OpenAI request. Attaching the selected DOCX is optional and may upload it to the recruiting site immediately.
+- **Tailor resume only:** Generate a job-specific draft without filling the form. Read and edit it under **Resume**, then use **Autofill with this resume** or download the DOCX.
+- **Resume:** Preview/download the job-specific draft, inspect its edits/questions, and upload or edit your saved base resume once. Tailoring never overwrites the base resume.
+- **My information:** Edit contact, education, and application details. Changes save automatically to the same local profile used by the app.
 
-Existing answers and existing file attachments are preserved. Custom dropdowns, work authorization/sponsorship questions, demographic questions, consent, and complex work-history widgets require manual entry. For an embedded application, open the actual Greenhouse/Lever form in a new tab. LinkedIn and Workday are not supported. See [extension details](extension/README.md).
+You stay on the job page. Keep the side panel and local server open while generating/filling. Closing the panel during a run can interrupt it. When switching to a different job tab, click the extension icon there to grant temporary access. The panel prevents applying a draft to a different tab or URL. If job text cannot be read, paste it under **View or paste the job description** and retry.
+
+### OpenAI quota / rate-limit errors
+
+The screenshot message **OpenAI quota or rate limit exceeded** is an API-side failure, independent of the UI. Exhausted API credits/project budgets need attention in OpenAI API billing; temporary rate limits may clear after waiting. A ChatGPT/Codex subscription does not supply API credits. Failed tailoring does not modify the application. You can still choose **Fill saved information without AI**, including attaching your unchanged base resume. An OpenAI key is not required for that mode.
+
+Existing answers and attachments are preserved. Custom dropdowns, work authorization/sponsorship, demographic questions, consent, and work-history widgets remain manual. You review and submit. For embedded forms, open the actual Greenhouse/Lever form in its own tab. LinkedIn and Workday are not supported. See [extension details](extension/README.md).
 
 ## Run locally
 
@@ -106,7 +115,7 @@ python -m unittest discover -s tests -v
 python -m pip check
 ```
 
-The backend tests cover streaming analysis, structured tailoring, profile persistence, private-data access restrictions, document export, and error handling using mocked OpenAI responses. For browser fixture checks, start the server with `python run.py --port 8001 --no-browser` and run `node tests/browser_apply.cjs` with Playwright installed. Set `APP_URL` or `CHROMIUM_PATH` to override the defaults. Browser tests use synthetic profiles, mocked model responses, and bridged Chrome APIs to exercise the one-click orchestration. They do not prove compatibility with every live employer form. The managed cloud browser blocks unpacked extension loading, so installation must be checked in your own Chrome. Live AI calls require a working API key with available credits.
+The backend tests cover streaming analysis, structured tailoring, profile persistence, private-data access restrictions, document export, and error handling using mocked OpenAI responses. For browser fixture checks, start the server with `python run.py --port 8001 --no-browser` and run `node tests/browser_apply.cjs` with Playwright installed. Set `APP_URL` or `CHROMIUM_PATH` to override the defaults. Browser tests use synthetic profiles, mocked model responses, and bridged Chrome APIs to exercise the side-panel workflow and AI-free fallback. They do not prove compatibility with every live employer form. The managed cloud browser blocks unpacked extension loading, so installation must be checked in your own Chrome. Live AI calls require a working API key with available credits.
 
 Your base resume/profile is saved to `.local/candidate.json` in the repository folder, which Git ignores. `JOBMATCH_DATA_DIR` can point to a different private data folder. Keep this single-user app bound to loopback; it is not a shared hosted profile service. Browser drafts are also kept locally for recovery. **Delete saved information** removes the app copy and this browser's backup. Resume uploads go to the app for parsing; tailoring sends resume/job text to OpenAI. Generated drafts do not replace your base resume. Keep profile JSON, resumes, backups, keys, and browser data out of Git. DOCX export uses simple paragraphs and does not preserve the original PDF layout.
 

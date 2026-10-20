@@ -37,7 +37,7 @@ async function jobmatchFill(bundle, attachResume) {
     if (type === 'file') {
       if (el.files?.length) {report.existing++; continue;}
       const isResume = labels.some(l => /\b(resume|cv)\b/i.test(l)) && !labels.some(l => /cover/i.test(l));
-      if (attachResume && isResume && (bundle.approved === true || bundle.generatedForJob === true) && bundle.document?.base64) {
+      if (attachResume && isResume && (bundle.approved === true || bundle.generatedForJob === true || bundle.savedResume === true) && bundle.document?.base64) {
         const mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
         const accepted = (el.accept || '').toLowerCase().split(',').map(x=>x.trim());
         if (el.accept && !accepted.some(x => ['.docx',mime,'application/*','*/*'].includes(x))) {

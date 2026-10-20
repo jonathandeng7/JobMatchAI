@@ -10,6 +10,7 @@ try:
     import httpx2 as httpx
 except ImportError:
     import httpx
+import openai
 from docx import Document
 from backend.main import app
 from backend.apply import TailoredResume
@@ -25,7 +26,7 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
     async def test_health_identifies_the_app_without_private_data(self):
         response = await self.client.get('/health')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {'service':'jobmatch-ai', 'apiVersion':2, 'features':['apply-workspace','saved-profile','tailored-autofill']})
+        self.assertEqual(response.json(), {'service':'jobmatch-ai', 'apiVersion':2, 'features':['apply-workspace','saved-profile','tailored-autofill','saved-autofill']})
 
     async def test_apply_and_extension_download(self):
         response = await self.client.get('/')
@@ -39,7 +40,7 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Their next hire.', response.text)
         response = await self.client.get('/extension.zip')
         with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-            self.assertEqual(set(z.namelist()), {'manifest.json','popup.html','popup.js','config.js','autofill.html','autofill.js','ui.css','job.js','fill.js','README.md'})
+            self.assertEqual(set(z.namelist()), {'manifest.json','background.js','panel.html','panel.js','config.js','panel.css','job.js','fill.js','README.md'})
 
     async def test_document_round_trip(self):
         response = await self.client.post('/resume-document', json={'resume':'Jonathan Deng\nExperience\nBuilt APIs'})
@@ -74,6 +75,22 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn('Backend job', args['input'])
                 self.assertIn('Never invent', args['instructions'])
                 if completed:self.assertEqual(response.json()['questions'], ['Confirm availability'])
+
+
+    async def test_openai_quota_and_rate_limit_errors_are_actionable(self):
+        for code in ('insufficient_quota', 'rate_limit_exceeded'):
+            with self.subTest(code=code):
+                client = AsyncMock()
+                client.__aenter__.return_value = client
+                client.responses.parse.side_effect = openai.RateLimitError(
+                    'Limited', response=httpx.Response(429, request=httpx.Request('POST', 'https://api.openai.com/v1/responses')),
+                    body={'code':code, 'message':'Limited', 'type':code})
+                with patch.dict(os.environ, {'JOBMATCH_OPENAI_API_KEY':'test-only'}, clear=True), patch('backend.apply.openai.AsyncOpenAI', return_value=client):
+                    response = await self.client.post('/tailor', json={'resume':'Original', 'job_description':'Backend role'})
+                self.assertEqual(response.status_code, 429)
+                self.assertIn('without AI', response.json()['detail'])
+                if code == 'insufficient_quota':
+                    self.assertIn('credits or quota are exhausted', response.json()['detail'])
 
 
 class SavedCandidateTests(unittest.IsolatedAsyncioTestCase):
@@ -156,3 +173,31 @@ class SavedCandidateTests(unittest.IsolatedAsyncioTestCase):
             response = await self.client.post('/autofill', json={'job_description':'job '*30})
         self.assertEqual(response.status_code, 502)
         self.assertEqual((await self.client.get('/candidate')).json()['resume'], self.candidate['resume'])
+
+
+    async def test_saved_information_autofill_never_calls_openai(self):
+        await self.client.put('/candidate', json=self.candidate)
+        with patch('backend.apply.openai.AsyncOpenAI') as client:
+            response = await self.client.post('/autofill/saved', json={'job_url':'https://jobs.lever.co/example/1'})
+        self.assertEqual(response.status_code, 200)
+        client.assert_not_called()
+        result = response.json()
+        self.assertTrue(result['savedResume'])
+        self.assertEqual(result['resume'], self.candidate['resume'])
+        document = Document(io.BytesIO(base64.b64decode(result['document']['base64'])))
+        self.assertEqual(document.paragraphs[0].text, self.candidate['resume'])
+
+    async def test_contact_only_autofill_needs_neither_a_resume_nor_an_api_key(self):
+        await self.client.put('/candidate', json={'profile':{'firstName':'Alex'},'resume':''})
+        with patch('backend.apply.openai.AsyncOpenAI') as client:
+            response = await self.client.post('/autofill/saved', json={'job_url':'https://job-boards.greenhouse.io/example/jobs/1'})
+        client.assert_not_called()
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['document'])
+        self.assertEqual(response.json()['profile']['firstName'], 'Alex')
+
+    async def test_saved_autofill_rejects_empty_profile_and_untrusted_sites(self):
+        self.assertEqual((await self.client.post('/autofill/saved', json={})).status_code, 409)
+        await self.client.put('/candidate', json=self.candidate)
+        self.assertEqual((await self.client.post('/autofill/saved', json={'job_url':'https://evil.example'})).status_code, 400)
+        self.assertEqual((await self.client.post('/autofill/saved', json={}, headers={'Origin':'https://evil.example'})).status_code, 403)
