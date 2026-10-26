@@ -19,7 +19,7 @@ app = FastAPI(title="JobMatch AI")
 @app.get("/health")
 async def health():
     return {"service": "jobmatch-ai", "apiVersion": 2,
-            "features": ["apply-workspace", "saved-profile", "tailored-autofill", "saved-autofill"]}
+            "features": ["apply-workspace", "saved-profile", "tailored-autofill", "saved-autofill", "subscription-tailoring"]}
 
 
 FRONTEND_PATH = pathlib.Path(__file__).parent.parent / "frontend" / "index.html"

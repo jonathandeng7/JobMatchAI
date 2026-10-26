@@ -23,7 +23,7 @@ function controls(){
   $('applyDraft').disabled=!ready||!draftBundle||!$('draft').value.trim()||draftRevision!==revision||!sameJob(draftJob,currentTab);
   $('download').disabled=busy||!$('draft').value.trim();
   for(const id of ['original','resumeFile','saveProfile',...Object.keys(labels)])$(id).disabled=!ready;
-  for(const id of ['tailorBeforeFill','attach','job','saveOrigin'])$(id).disabled=busy;
+  for(const id of ['tailorBeforeFill','attach','job','saveOrigin','saveProvider','aiProvider'])$(id).disabled=busy;
 }
 function setBusy(value){busy=value;controls();}
 function invalidDraft(){revision++;draftRevision=-1;if(draftBundle)$('draftState').textContent='Profile changed · tailor again';controls();}
@@ -37,10 +37,11 @@ async function connect(){
   await JobMatchApi.checkConnection();
   const saved=await JobMatchApi.request('/candidate');
   if(!saved.profile||typeof saved.ready!=='boolean')throw JobMatchApi.incompatible(origin);
-  populate(saved);aiConfigured=saved.aiConfigured;connected=true;
+  populate(saved);aiConfigured=saved.aiConfigured;connected=true;$('aiProvider').value=saved.aiProvider||'openai';
   if(!aiConfigured)$('tailorBeforeFill').checked=false;
   $('connection').textContent='Connected locally';$('saveState').textContent='All changes saved';controls();
-  status(!aiConfigured?'AI tailoring needs an OpenAI API key. Saved-information autofill works without it.':hasInfo()?'Your saved information is ready. Everything happens in this panel.':'Add your information and base resume once using the tabs above.');
+  status(!aiConfigured?(saved.aiSetupMessage||'Configure an AI provider in Connection settings. Saved-information autofill works without it.'):(saved.aiSetupMessage||'Your saved information is ready. Everything happens in this panel.'));
+  if(!aiConfigured)$('settings').open=true;
 }
 function connectionError(error){connected=false;$('connection').textContent=error.code==='INCOMPATIBLE_SERVER'?'Wrong or outdated server':error.code==='OFFLINE'?'Local app offline':'Connection needs attention';$('settings').open=true;status(error.message,true);controls();}
 function persist(){
@@ -124,6 +125,12 @@ action('saveOrigin',async()=>{
   const origin=JobMatchApi.validateOrigin($('appOrigin').value.trim());
   clearTimeout(saveTimer);if(connected)await persist();else await saveQueue.catch(()=>{});
   await chrome.storage.local.set({appOrigin:origin});invalidDraft();
+  try{await connect();}catch(error){connectionError(error);}
+});
+action('saveProvider',async()=>{
+  clearTimeout(saveTimer);if(connected)await persist();
+  await JobMatchApi.request('/ai/provider',{provider:$('aiProvider').value},'PUT');
+  draftRevision=-1;if(draftBundle)$('draftState').textContent='Provider changed · tailor again';
   try{await connect();}catch(error){connectionError(error);}
 });
 async function editedBundle(){

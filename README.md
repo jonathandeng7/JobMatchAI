@@ -13,7 +13,7 @@ Start the app with `python run.py` from the repository root after installing dep
 
 Existing browser-only profiles migrate automatically when you first open the updated app. If you have a private profile JSON from an earlier version, restore it once under **Import a captured job or restore a backup**. This saves its base resume and profile to the local app. Use **Export backup** in the profile tab to create a private backup.
 
-AI features require `OPENAI_API_KEY` in your local `.env` file. Set `JOBMATCH_OPENAI_MODEL` optionally; the default is `gpt-5`. The app is configured for local development; Vercel-specific files have been removed. An existing Vercel project must be disconnected or deleted separately in the Vercel dashboard to stop hosted deployments.
+Resume tailoring supports **Codex with a ChatGPT subscription** or **OpenAI API credits**. Choose the provider in the extension’s Connection settings. OpenAI API mode uses `OPENAI_API_KEY` in `.env` and optional `JOBMATCH_OPENAI_MODEL` (default `gpt-5`). The separate Resume Analysis page currently uses OpenAI API mode. The app is configured for local development; Vercel-specific files have been removed. An existing Vercel project must be disconnected or deleted separately in the Vercel dashboard to stop hosted deployments.
 
 ## Use the extension side panel
 
@@ -23,7 +23,7 @@ Keep the local app running without opening a browser page:
 python run.py --no-browser
 ```
 
-The local app still stores your profile and API key and makes OpenAI requests. All normal application work happens inside the extension; the web workspace is optional.
+The local app stores your profile and runs either the official Codex CLI or the OpenAI API client. All normal application work happens inside the extension; the web workspace is optional.
 
 ### Install / update once
 
@@ -42,9 +42,29 @@ The local app still stores your profile and API key and makes OpenAI requests. A
 
 You stay on the job page. Keep the side panel and local server open while generating/filling. Closing the panel during a run can interrupt it. When switching to a different job tab, click the extension icon there to grant temporary access. The panel prevents applying a draft to a different tab or URL. If job text cannot be read, paste it under **View or paste the job description** and retry.
 
+### Use your ChatGPT subscription for tailoring
+
+If your ChatGPT plan includes Codex, you do not need separate OpenAI API credits for this extension's resume tailoring.
+
+1. Install Node.js LTS if `npm` is not available, then run:
+
+```bash
+npm install -g @openai/codex
+codex login
+```
+
+2. In the official login flow, choose **Sign in with ChatGPT** and use your subscription account. Do not choose API-key login. `codex login status` can confirm the login method locally; do not share its output if it contains key fragments.
+3. Pull the latest app, restart the local server on your existing port, and reload the extension.
+4. Open **Connection settings → AI tailoring provider**, select **Codex — ChatGPT subscription**, and click **Save AI provider & check sign-in**.
+5. Tailor/autofill as usual. The app runs `codex exec` locally with your native CLI authentication. Your resume and job text are sent through Codex and count against your plan's usage limits. There is no separate API-key request and no automatic fallback to paid API mode.
+
+The latest Codex CLI is required for its ephemeral/structured-output options. Login is a one-time local step; the app never extracts or copies authentication tokens. It runs in an isolated temporary folder with read-only sandboxing, user tool configuration ignored, shell/browsing/agent tools disabled, and a JSON response schema. Personal inputs go through stdin. Temporary outputs are removed when the request finishes; the base resume remains unchanged. `JOBMATCH_CODEX_BIN` may specify the native CLI executable path if needed.
+
+The provider preference is saved in `.local/ai-provider.json` (ignored by Git). Without a saved preference, `JOBMATCH_AI_PROVIDER=codex` can set the initial mode; otherwise it defaults to `openai`. A saved panel choice takes precedence. Switching providers does not delete profiles/resumes. The standalone Resume Analysis page continues to require an OpenAI API key; subscription mode covers tailoring and extension autofill.
+
 ### OpenAI quota / rate-limit errors
 
-The screenshot message **OpenAI quota or rate limit exceeded** is an API-side failure, independent of the UI. Exhausted API credits/project budgets need attention in OpenAI API billing; temporary rate limits may clear after waiting. A ChatGPT/Codex subscription does not supply API credits. Failed tailoring does not modify the application. You can still choose **Fill saved information without AI**, including attaching your unchanged base resume. An OpenAI key is not required for that mode.
+The screenshot message **OpenAI quota or rate limit exceeded** is an API-side failure, independent of the UI. Exhausted API credits/project budgets need attention in OpenAI API billing; temporary rate limits may clear after waiting. A ChatGPT/Codex subscription does not supply API credits, but you can choose the separate Codex subscription mode above. Known temporary API rate limits are retried once after a short wait (at most five seconds); exhausted-credit and unknown 429 errors are not retried. Failed tailoring does not modify the application. You can still choose **Fill saved information without AI**, including attaching your unchanged base resume. An OpenAI key is not required for that mode.
 
 Existing answers and attachments are preserved. Custom dropdowns, work authorization/sponsorship, demographic questions, consent, and work-history widgets remain manual. You review and submit. For embedded forms, open the actual Greenhouse/Lever form in its own tab. LinkedIn and Workday are not supported. See [extension details](extension/README.md).
 
@@ -115,7 +135,7 @@ python -m unittest discover -s tests -v
 python -m pip check
 ```
 
-The backend tests cover streaming analysis, structured tailoring, profile persistence, private-data access restrictions, document export, and error handling using mocked OpenAI responses. For browser fixture checks, start the server with `python run.py --port 8001 --no-browser` and run `node tests/browser_apply.cjs` with Playwright installed. Set `APP_URL` or `CHROMIUM_PATH` to override the defaults. Browser tests use synthetic profiles, mocked model responses, and bridged Chrome APIs to exercise the side-panel workflow and AI-free fallback. They do not prove compatibility with every live employer form. The managed cloud browser blocks unpacked extension loading, so installation must be checked in your own Chrome. Live AI calls require a working API key with available credits.
+The backend tests cover streaming analysis, structured tailoring, profile persistence, private-data access restrictions, document export, API rate-limit handling, and subscription routing. Codex adapter tests use a fake CLI process to verify ChatGPT-only authentication, input handling, cleanup, timeouts, and no API-key fallback. A real subscription-authenticated generation requires your local CLI login; it has not been executed in the cloud workspace. For browser fixture checks, start the server with `python run.py --port 8001 --no-browser` and run `node tests/browser_apply.cjs` with Playwright installed. Set `APP_URL` or `CHROMIUM_PATH` to override the defaults. Browser tests use synthetic profiles, mocked model responses, and bridged Chrome APIs to exercise the side-panel workflow and AI-free fallback. They do not prove compatibility with every live employer form. The managed cloud browser blocks unpacked extension loading, so installation must be checked in your own Chrome. Live AI calls require a working API key with available credits.
 
 Your base resume/profile is saved to `.local/candidate.json` in the repository folder, which Git ignores. `JOBMATCH_DATA_DIR` can point to a different private data folder. Keep this single-user app bound to loopback; it is not a shared hosted profile service. Browser drafts are also kept locally for recovery. **Delete saved information** removes the app copy and this browser's backup. Resume uploads go to the app for parsing; tailoring sends resume/job text to OpenAI. Generated drafts do not replace your base resume. Keep profile JSON, resumes, backups, keys, and browser data out of Git. DOCX export uses simple paragraphs and does not preserve the original PDF layout.
 

@@ -187,7 +187,7 @@ async function initialize() {
     if (!saved.resume.trim() && legacy?.resume?.trim()) {
       populate(legacy); await persist(); status('Your previous resume and profile are now saved automatically.');
     } else { $('saveState').textContent = saved.resume ? 'All changes saved' : 'Ready to set up'; status(saved.resume ? 'Your saved resume is ready. Paste a job or use the Chrome extension.' : 'Add your profile and resume once to get started.'); }
-    if (!saved.aiConfigured && saved.resume) status('Resume loaded. Add an OpenAI API key to .env to enable tailoring.', true);
+    if (!saved.aiConfigured && saved.resume) status(saved.aiSetupMessage || 'Resume loaded. Configure your AI provider in the extension to enable tailoring.', true);
   } catch (error) {status(error.message, true); $('readyText').textContent = 'Workspace unavailable'; $('saveState').textContent = 'Could not load saved data';}
 }
 initialize();

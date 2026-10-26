@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobMatch AI Autofill",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Tailor your saved resume and fill application details on Greenhouse and Lever in one click.",
   "permissions": [
     "activeTab",

@@ -26,7 +26,7 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
     async def test_health_identifies_the_app_without_private_data(self):
         response = await self.client.get('/health')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {'service':'jobmatch-ai', 'apiVersion':2, 'features':['apply-workspace','saved-profile','tailored-autofill','saved-autofill']})
+        self.assertEqual(response.json(), {'service':'jobmatch-ai', 'apiVersion':2, 'features':['apply-workspace','saved-profile','tailored-autofill','saved-autofill','subscription-tailoring']})
 
     async def test_apply_and_extension_download(self):
         response = await self.client.get('/')
@@ -85,7 +85,7 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
                 client.responses.parse.side_effect = openai.RateLimitError(
                     'Limited', response=httpx.Response(429, request=httpx.Request('POST', 'https://api.openai.com/v1/responses')),
                     body={'code':code, 'message':'Limited', 'type':code})
-                with patch.dict(os.environ, {'JOBMATCH_OPENAI_API_KEY':'test-only'}, clear=True), patch('backend.apply.openai.AsyncOpenAI', return_value=client):
+                with patch.dict(os.environ, {'JOBMATCH_OPENAI_API_KEY':'test-only'}, clear=True), patch('backend.apply.openai.AsyncOpenAI', return_value=client), patch('backend.ai_errors.asyncio.sleep', new=AsyncMock()):
                     response = await self.client.post('/tailor', json={'resume':'Original', 'job_description':'Backend role'})
                 self.assertEqual(response.status_code, 429)
                 self.assertIn('without AI', response.json()['detail'])

@@ -18,14 +18,15 @@ const assert = require('assert');
   const initial = {profile:{firstName:'Alex',lastName:'Sample',email:'alex@example.test',phone:'555-0100',
     github:'https://github.com/example',linkedin:'https://www.linkedin.com/in/example',sponsorship:'No sponsorship required'},
     resume:'Alex Sample\nBuilt Python APIs and reliable services.',resumeName:'resume.txt'};
-  let bundle, aiConfigured=true;
+  let bundle, aiConfigured=true, aiProvider='openai';
   try {
     await ctx.route('**/candidate', async route => {
       const method = route.request().method();
       if (method === 'PUT') { saved = route.request().postDataJSON(); return route.fulfill({json:{saved:true,ready:!!saved.resume}}); }
       if (method === 'DELETE') {saved={profile:{},resume:'',resumeName:'My resume'};return route.fulfill({json:{deleted:true}});}
-      return route.fulfill({json:{...saved,ready:!!saved.resume,aiConfigured}});
+      return route.fulfill({json:{...saved,ready:!!saved.resume,aiConfigured,aiProvider,aiSetupMessage:aiProvider==='codex'?(aiConfigured?'Codex is signed in with ChatGPT. Tailoring uses your Codex plan limits.':'Run codex login and sign in with ChatGPT.'):undefined}});
     });
+    await ctx.route('**/ai/provider',route=>{aiProvider=route.request().postDataJSON().provider;return route.fulfill({json:{aiProvider,aiConfigured}});});
     const page = await ctx.newPage();
     // Existing browser-only profiles migrate automatically, without a repeat upload.
     await page.addInitScript(data => {
@@ -50,7 +51,7 @@ const assert = require('assert');
     assert.equal(await page.locator('#phone').inputValue(),'555-0199');
     console.log('PASS legacy migration, automatic profile save, and resume restored without browser storage');
     await page.locator('#resumeFile').setInputFiles({name:'updated-resume.txt',mimeType:'text/plain',buffer:Buffer.from('Alex Sample\nBuilt Python APIs. Led testing and backend development.')});
-    await page.waitForFunction(()=>document.getElementById('resumeName').textContent==='updated-resume.txt');
+    await page.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Resume saved.'));
     assert(saved.resume.includes('Led testing'));
     assert.equal(saved.resumeName,'updated-resume.txt');
     console.log('PASS one-time upload automatically saves the base resume');
@@ -165,6 +166,15 @@ const assert = require('assert');
     await panel.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Base resume saved'));
     assert.equal(saved.resume,'Saved from the extension');
     console.log('PASS profile editing and one-time resume upload/save entirely inside the extension');
+    await panel.getByText('Connection settings',{exact:true}).click();
+    await panel.locator('#aiProvider').selectOption('codex');
+    await panel.locator('#saveProvider').click();
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.includes('signed in with ChatGPT'));
+    assert.equal(aiProvider,'codex');
+    assert.equal(await panel.locator('#tailorOnly').isDisabled(),false);
+    console.log('PASS subscription provider selection and ChatGPT readiness display inside the panel');
+    await panel.getByText('Connection settings',{exact:true}).click();
+
 
     await ctx.unroute('**/autofill');
     await ctx.route('**/autofill',r=>r.fulfill({status:429,json:{detail:'OpenAI quota or rate limit exceeded. You can still fill saved information without AI.'}}));
