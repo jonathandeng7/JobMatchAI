@@ -58,8 +58,11 @@ const assert = require('assert');
 
     const docResponse = await page.request.post(app+'/resume-document',{data:{resume:'Alex Sample\nTailored Python API experience.'}});
     const doc = await docResponse.json();
-    bundle = {profile:saved.profile,resume:'Alex Sample\nTailored Python API experience.',document:doc,generatedForJob:true,
+    bundle = {draftId:'test-draft',jobUrl:'https://job-boards.greenhouse.io/example/jobs/1',profile:saved.profile,resume:'Alex Sample\nTailored Python API experience.',document:doc,generatedForJob:true,
       changes:[{original:'Built Python APIs.',revised:'<img src=x onerror=alert(1)>',reason:'Safe text rendering'}],questions:['Confirm start date']};
+    bundle.document.filename='Alex-Sample-Backend-Engineer.docx';
+    await ctx.route('**/drafts',r=>r.fulfill({json:{drafts:[{id:'test-draft',jobTitle:'Backend Engineer',jobUrl:bundle.jobUrl,createdAt:'2026-10-26T12:00:00Z'}]}}));
+    await ctx.route('**/drafts/test-draft',r=>r.fulfill({json:{...bundle,id:'test-draft',jobTitle:'Backend Engineer',createdAt:'2026-10-26T12:00:00Z'}}));
     let modelCalls=0;
     await ctx.route('**/autofill',route=>{
       const input=route.request().postDataJSON();
@@ -121,8 +124,8 @@ const assert = require('assert');
       return[{result}];
     });
     await panel.addInitScript(origin=>{
-      window.createdTabs=0;
-      window.chrome={storage:{local:{get:async()=>({appOrigin:origin}),set:async()=>{}}},
+      window.createdTabs=0;window.downloadsStarted=[];
+      window.chrome={downloads:{download:async options=>{window.downloadsStarted.push(options);return window.downloadsStarted.length;}},storage:{local:{get:async()=>({appOrigin:origin}),set:async()=>{}}},
         scripting:{executeScript:details=>window.executeOnJob({files:details.files,source:details.func?.toString(),args:details.args})},
         tabs:{query:async()=>[await window.getActiveJob()],create:async()=>{window.createdTabs++;},
           onActivated:{addListener:fn=>{window.activateJob=fn;}},onUpdated:{addListener:()=>{}}}};
@@ -134,11 +137,14 @@ const assert = require('assert');
     assert.equal(await form.locator('#first').inputValue(),'Alex');
     assert.equal(await form.locator('#email').inputValue(),'existing@example.test');
     assert.equal(await form.locator('#github').inputValue(),'https://github.com/example');
-    assert.equal(await form.locator('#sponsor').inputValue(),'');assert.equal(await form.locator('#company').inputValue(),'');
+    assert.equal(await form.locator('#sponsor').inputValue(),'No');assert.equal(await form.locator('#company').inputValue(),'');
     assert.equal(await form.locator('#consent').isChecked(),false);assert.equal(await form.evaluate(()=>window.submitted),false);
-    assert.equal(await form.locator('#resume').evaluate(e=>e.files[0].name),'resume.docx');
+    assert.equal(await form.locator('#resume').evaluate(e=>e.files[0].name),'Alex-Sample-Backend-Engineer.docx');
     assert.equal(await panel.evaluate(()=>window.createdTabs),0);
-    await panel.locator('#resumeTab').click();
+    assert.equal(await panel.locator('#resumeReady').isVisible(),true);
+    assert.equal(await panel.locator('#readyFilename').textContent(),'Alex-Sample-Backend-Engineer.docx');
+    assert.equal(await panel.evaluate(()=>window.downloadsStarted[0].filename),'Alex-Sample-Backend-Engineer.docx');
+    await panel.locator('#reviewReady').click();
     assert.equal(await panel.locator('#draft').inputValue(),bundle.resume);
     assert.equal(await panel.locator('#changes img').count(),0);
     assert(await panel.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -181,14 +187,14 @@ const assert = require('assert');
     await form.goto('https://jobs.lever.co/example/job-3');await panel.evaluate(()=>window.activateJob());
     await panel.locator('#applyTab').click();await panel.locator('#fill').click();
     await panel.waitForFunction(()=>document.getElementById('status').textContent.includes('quota or rate limit'));
-    assert.equal(await form.locator('#first').inputValue(),'');
+    assert.equal(await form.locator('#first').inputValue(),'Alex');
     const callsBeforeBasic=modelCalls;
     await panel.locator('#attach').check();
     await panel.locator('#fillSaved').click();
     await panel.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Autofill complete'));
     assert.equal(await form.locator('#first').inputValue(),'Alex');assert.equal(modelCalls,callsBeforeBasic);
-    assert.equal(await form.locator('#resume').evaluate(e=>e.files[0].name),'resume.docx');
-    console.log('PASS quota failure leaves form untouched and saved-information autofill remains available');
+    assert.equal(await form.locator('#resume').evaluate(e=>e.files[0].name),'Alex-Sample-Backend-Engineer.docx');
+    console.log('PASS quota failure preserves fast profile fill and saved-information autofill remains available');
 
     aiConfigured=false;await panel.reload();
     await panel.waitForFunction(()=>!document.getElementById('fill').disabled);
@@ -206,10 +212,20 @@ const assert = require('assert');
     const startedPromise=new Promise(resolve=>started=resolve);
     await ctx.route('**/autofill',async r=>{started();await new Promise(resolve=>release=resolve);await r.fulfill({json:bundle});});
     await panel.locator('#fill').click();await startedPromise;
+    assert.equal(await form.locator('#first').inputValue(),'Alex');
+    console.log('PASS profile fields fill before the tailoring response arrives');
     await form.goto('https://jobs.lever.co/example/different-job');release();
     await panel.waitForFunction(()=>document.getElementById('status').textContent.includes('job page changed'));
     assert.equal(await form.locator('#first').inputValue(),'');
     console.log('PASS changing jobs while tailoring stops stale autofill');
+    await panel.reload();await panel.waitForFunction(()=>!document.getElementById('fill').disabled);
+    await panel.locator('#resumeTab').click();await panel.locator('#historyDetails').evaluate(el=>el.open=true);
+    await panel.locator('#historySelect').selectOption('test-draft');await panel.locator('#restoreDraft').click();
+    await panel.waitForFunction(()=>document.getElementById('status').textContent.startsWith('Saved resume restored'));
+    assert.equal(await panel.locator('#draft').inputValue(),bundle.resume);
+    assert.equal(await panel.locator('#applyDraft').isDisabled(),true);
+    console.log('PASS generated resume can be restored after panel reload without applying to a different job');
+
     await panel.getByText('Connection settings',{exact:true}).click();
     await panel.locator('#appOrigin').fill('https://external.example');await panel.locator('#saveOrigin').click();
     await panel.waitForFunction(()=>document.getElementById('status').textContent.includes('local app address only'));

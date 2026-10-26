@@ -7,7 +7,7 @@ const labels = {
   state: 'State / region', postalCode: 'Postal code', country: 'Country', school: 'School',
   degree: 'Degree', graduation: 'Graduation date', targetRoles: 'Target roles',
   targetLocations: 'Target locations', workAuthorization: 'Work authorization',
-  sponsorship: 'Sponsorship needs', availableFrom: 'Available start date'
+  sponsorship: 'Sponsorship needs', availableFrom: 'Available start date', citizenship:'Citizenship status', race:'Race (optional)', ethnicity:'Hispanic/Latino ethnicity (optional)'
 };
 let resumeName = 'My resume';
 let saveTimer, toastTimer, lastResult = null, revision = 0;

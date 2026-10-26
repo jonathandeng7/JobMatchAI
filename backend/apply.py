@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 
-from backend import ai_provider, codex_provider
+from backend import ai_provider, codex_provider, drafts
 from backend.ai_errors import classify_limit, retry_temporary_limit
 from backend.candidate import Candidate, candidate_path, read_candidate, require_local_client, validate_job_url, write_candidate
 
@@ -122,6 +122,7 @@ async def extension_zip():
 class AutofillRequest(BaseModel):
     job_description: str = Field(min_length=80, max_length=30000)
     job_url: str = Field(default='', max_length=2048)
+    job_title: str = Field(default='', max_length=300)
 
 
 @router.get('/candidate', dependencies=[Depends(require_local_client)])
@@ -160,9 +161,16 @@ async def prepare_autofill(request: AutofillRequest):
     if len(result.resume) > 40000:
         raise HTTPException(502, 'The tailored resume is too long. Please try a shorter base resume.')
     document = await resume_document(ExportRequest(resume=result.resume))
-    return {'profile': candidate.profile, 'resume': result.resume, 'changes': result.changes,
-            'questions': result.questions, 'document': document, 'generatedForJob': True,
-            'jobUrl': request.job_url}
+    document['filename'] = drafts.filename(candidate.profile, request.job_title)
+    bundle = {'profile': candidate.profile, 'resume': result.resume, 'changes': result.changes,
+              'questions': result.questions, 'document': document, 'generatedForJob': True,
+              'jobUrl': request.job_url}
+    try:
+        bundle['draftId'] = drafts.save(bundle, request.job_title)
+    except OSError:
+        bundle['saveWarning'] = 'The resume could not be saved to local history. Download it now to keep a copy.'
+    return bundle
+
 
 
 class SavedAutofillRequest(BaseModel):
@@ -189,3 +197,13 @@ class ProviderRequest(BaseModel):
 async def choose_provider(request: ProviderRequest):
     ai_provider.save(request.provider)
     return await ai_provider.status()
+
+
+@router.get('/drafts', dependencies=[Depends(require_local_client)])
+async def recent_drafts():
+    return {'drafts': drafts.recent()}
+
+
+@router.get('/drafts/{identifier}', dependencies=[Depends(require_local_client)])
+async def saved_draft(identifier: str):
+    return drafts.load(identifier)

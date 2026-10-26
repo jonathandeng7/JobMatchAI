@@ -1,4 +1,4 @@
-# JobMatch AI side panel (v0.4)
+# JobMatch AI side panel (v0.5)
 
 ## Start and install
 
@@ -10,7 +10,7 @@
 
 ## Apply, tailor, and edit here
 
-**Apply:** With tailoring enabled, **Autofill with my information** reads the current job, tailors a copy of your saved base resume, and fills common empty fields. The attachment checkbox controls whether the generated DOCX is attached to an empty resume field. You can inspect results and the resume without leaving the panel.
+**Apply:** With tailoring enabled, **Autofill with my information** fills your saved text fields first, completes supported dropdowns, and tailors a copy of your saved base resume in parallel. The attachment checkbox controls whether the generated DOCX is attached to an empty resume field. You can inspect results and the resume without leaving the panel.
 
 **Without AI:** Uncheck **Tailor my saved resume for this job** or click **Fill saved information without AI**. This uses saved details and the unchanged base resume, does not call OpenAI, and works without an API key or credits. Contact-only filling also works without a saved resume. No full job description is needed in this mode.
 
@@ -32,18 +32,26 @@ The provider choice is retained in `.local/ai-provider.json`; profiles/resumes a
 
 ## API errors and form limits
 
-In OpenAI API mode, a quota/credit/rate-limit error cannot be resolved by moving the UI. Check OpenAI API billing and project budgets for exhausted credits; retry later for temporary rate limits. Failed tailoring leaves the form untouched. The explicit saved-information mode remains available and does not incur an AI request. API keys stay in the local app, never in the extension. Known short temporary API rate limits get one bounded retry; exhausted credits do not.
+In OpenAI API mode, a quota/credit/rate-limit error cannot be resolved by moving the UI. Check OpenAI API billing and project budgets for exhausted credits; retry later for temporary rate limits. Failed tailoring keeps the profile fields already filled and does not attach a new resume. The explicit saved-information mode remains available and does not incur an AI request. API keys stay in the local app, never in the extension. Known short temporary API rate limits get one bounded retry; exhausted credits do not.
 
-Only conventional empty fields with known labels are filled. Existing answers and files are preserved. Custom widgets, eligibility, consent, demographics, dates, and complex work-history questions remain manual. Embedded cross-origin forms must be opened directly. LinkedIn and Workday are unsupported. The extension never submits, creates accounts, extracts login sessions, or bypasses CAPTCHAs.
+Only conventional empty fields with known labels are filled. Existing answers and files are preserved. Supported native/React-style selects and radio groups can fill explicit saved work-authorization, sponsorship, citizenship, race and ethnicity answers. Unanswered questions, unsupported widgets, consent, unrelated demographics, and complex work-history remain manual. Race/ethnicity are never inferred: enter the exact preference once under My information, or leave it blank for manual entry. Explicit decline-to-disclose preferences are supported. Embedded cross-origin forms must be opened directly. LinkedIn and Workday are unsupported. The extension never submits, creates accounts, extracts login sessions, or bypasses CAPTCHAs.
 
 Attaching can upload the DOCX to the recruiting site before final submission. If a custom widget does not accept it, download it in the Resume tab and upload manually. Review the AI draft and full application before submitting yourself.
 
 ## Data and verification
 
-The local app stores the base resume/profile in `.local/candidate.json` (ignored by Git). Edits made in the panel update that same file. Keep the app loopback-only for this single-user workflow. Tailoring sends resume and job text to OpenAI. Generated drafts live in the open panel. Profile backups/downloads contain personal data and should not be committed.
+The local app stores the base resume/profile in `.local/candidate.json` (ignored by Git). Edits made in the panel update that same file. Keep the app loopback-only for this single-user workflow. Tailoring sends resume and job text to OpenAI. Generated drafts are retained separately under `.local/drafts`; original generated versions survive closing the panel. Local preview edits must be downloaded to retain them. Profile backups/downloads contain personal data and should not be committed.
 
-Permissions: `sidePanel` opens the extension beside the job; `activeTab` and `scripting` read/fill the tab you invoke it on; `storage` saves the connection address; loopback HTTP host access connects to the app. No permanent Greenhouse/Lever site permission is requested. The toolbar handler opens the panel directly in response to your click.
+Permissions: `sidePanel` opens the extension beside the job; `activeTab` and `scripting` read/fill the tab you invoke it on; `storage` saves the connection address and download preference; `downloads` delivers the generated DOCX to Chrome Downloads; loopback HTTP host access connects to the app. No permanent Greenhouse/Lever site permission is requested. The toolbar handler opens the panel directly in response to your click.
 
 Automated browser fixtures cover the panel UI, tailored and saved-only filling, profile editing, upload, errors, and no tab creation using bridged Chrome APIs. Managed cloud Chromium blocks unpacked extension installation, so actual Chrome installation/permissions and live employer compatibility still require local verification.
 
 Subscription adapter tests use a fake CLI and browser tests use bridged Chrome APIs. A real ChatGPT-authenticated generation must be verified after your local `codex login`; the cloud task does not borrow its own agent credentials to test your subscription.
+
+## Find your resume
+
+The Apply tab shows a **Your tailored resume is ready** card with a named DOCX download and a review button. Automatic downloading is on by default; disable **Download the tailored DOCX when ready** if you prefer. Find completed downloads in Chrome Downloads (`Ctrl/Cmd+J`). Accept Chrome's downloads permission after upgrading if prompted.
+
+Generated originals also appear in **Resume → Saved resumes from previous jobs**, backed by the local `.local/drafts` folder. Restoring a draft does not rerun AI or overwrite the base resume. Existing Greenhouse attachments are preserved and explicitly reported; replace those manually if you want the tailored copy. A selected file is not confirmation of a completed network upload, so verify the site's upload status before submitting.
+
+Targeted control fixtures run with `node tests/browser_greenhouse.cjs`. The live ID.me URL supplied in chat could not be loaded because the cloud egress proxy rejected it. Tests cover matching Greenhouse-style controls, not a verified live employer application.
