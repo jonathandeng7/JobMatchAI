@@ -63,9 +63,15 @@ def write_candidate(candidate: Candidate):
 def validate_job_url(value: str):
     if not value:
         return
-    url = urlsplit(value)
+    try:
+        url = urlsplit(value)
+        port = url.port
+    except ValueError:
+        raise HTTPException(400, 'Invalid job application URL.') from None
     host = url.hostname or ''
-    if url.scheme != 'https' or url.username or url.password or not (
-        host == 'jobs.lever.co' or host == 'greenhouse.io' or host.endswith('.greenhouse.io')
+    if url.scheme != 'https' or url.username or url.password or port not in (None, 443) or not (
+        host in {'jobs.lever.co', 'jobs.ashbyhq.com', 'jobs.smartrecruiters.com', 'careers.smartrecruiters.com',
+                 'greenhouse.io', 'myworkdayjobs.com', 'myworkdaysite.com'}
+        or host.endswith(('.greenhouse.io', '.myworkdayjobs.com', '.myworkdaysite.com'))
     ):
-        raise HTTPException(400, 'Open a Greenhouse or Lever job application.')
+        raise HTTPException(400, 'Open a Greenhouse, Lever, Ashby, SmartRecruiters, or Workday job application.')

@@ -103,7 +103,7 @@ const assert = require('assert');
     await ctx.route('https://jobs.lever.co/**',r=>r.fulfill({contentType:'text/html',body:fixture}));
     const form = await ctx.newPage();
     await form.goto('https://job-boards.greenhouse.io/example/jobs/1');
-    await form.addScriptTag({path:path.join(extension,'job.js')});
+    for(const file of ['sites.js','job.js'])await form.addScriptTag({path:path.join(extension,file)});
     const capture=await form.evaluate(()=>jobmatchJobContext());
     assert(capture.jobDescription.includes('Python'));assert(!capture.jobDescription.includes('Do you require sponsorship'));
 
@@ -111,7 +111,7 @@ const assert = require('assert');
     // Chrome APIs; actual installation is blocked by managed-browser policy.
     await ctx.route(app+'/__extension/**',route=>{
       const name=new URL(route.request().url()).pathname.split('/').pop();
-      if(!['panel.html','panel.js','panel.css','config.js'].includes(name))return route.abort();
+      if(!['panel.html','panel.js','panel.css','config.js','sites.js'].includes(name))return route.abort();
       return route.fulfill({path:path.join(extension,name),contentType:name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':'text/html'});
     });
     await ctx.route('**/autofill/saved',route=>route.fulfill({json:{...bundle,profile:saved.profile,resume:saved.resume,changes:[],questions:[],savedResume:true,generatedForJob:false}}));
@@ -225,6 +225,29 @@ const assert = require('assert');
     assert.equal(await panel.locator('#draft').inputValue(),bundle.resume);
     assert.equal(await panel.locator('#applyDraft').isDisabled(),true);
     console.log('PASS generated resume can be restored after panel reload without applying to a different job');
+
+    await ctx.unroute('**/autofill');
+    await ctx.route('**/autofill',r=>r.fulfill({json:{...bundle,jobUrl:r.request().postDataJSON().job_url}}));
+    for(const [url,name]of [['https://jobs.ashbyhq.com/example/job-1','Ashby'],
+      ['https://jobs.smartrecruiters.com/Example/123-engineer','SmartRecruiters'],
+      ['https://example.wd5.myworkdayjobs.com/en-US/External/job/Engineer_R123/apply','Workday']]){
+      await ctx.route(url,r=>r.fulfill({contentType:'text/html',body:fixture}));
+      await form.goto(url);await panel.evaluate(()=>window.activateJob());
+      await panel.locator('#applyTab').click();
+      assert((await panel.locator('#jobSite').textContent()).includes(name));
+      if(name==='Workday')assert((await panel.locator('#jobHint').textContent()).includes('visible step'));
+      await panel.locator('#fill').click();
+      await panel.waitForFunction(()=>!document.getElementById('fill').disabled&&document.getElementById('status').textContent.startsWith('Autofill complete'));
+      assert.equal(await form.locator('#first').inputValue(),'Alex');
+      assert.equal(await form.locator('#resume').evaluate(el=>el.files[0]?.name),bundle.document.filename);
+      assert.equal(await panel.locator('#resumeReady').isVisible(),true);
+      assert.equal(await panel.evaluate(()=>window.createdTabs),0);
+    }
+    console.log('PASS Ashby, SmartRecruiters and Workday panel detection, tailoring, downloads and autofill');
+    await panel.locator('#fillSaved').click();
+    await panel.waitForFunction(()=>!document.getElementById('fill').disabled&&document.getElementById('status').textContent.startsWith('No new fields filled'));
+    assert((await panel.locator('#report').textContent()).includes('existing attachment preserved'));
+    console.log('PASS a page with only existing answers is reported without claiming new fields were filled');
 
     await panel.getByText('Connection settings',{exact:true}).click();
     await panel.locator('#appOrigin').fill('https://external.example');await panel.locator('#saveOrigin').click();

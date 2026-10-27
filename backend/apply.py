@@ -113,7 +113,7 @@ async def resume_document(request: ExportRequest):
 async def extension_zip():
     output = io.BytesIO()
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for name in ('manifest.json', 'background.js', 'panel.html', 'panel.js', 'config.js', 'panel.css', 'job.js', 'fill.js', 'README.md'):
+        for name in ('manifest.json', 'background.js', 'panel.html', 'panel.js', 'config.js', 'sites.js', 'panel.css', 'job.js', 'fill.js', 'README.md'):
             archive.write(ROOT / 'extension' / name, name)
     return Response(output.getvalue(), media_type='application/zip',
                     headers={'Content-Disposition': 'attachment; filename="JobMatchAI-extension.zip"'})

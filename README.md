@@ -1,6 +1,6 @@
 # JobMatch AI
 
-Analyze your resume against a job description, review tailored resume edits, and use a Chrome extension to fill common application fields on Greenhouse and Lever. You review the application and submit it yourself.
+Analyze your resume against a job description, review tailored resume edits, and use a Chrome extension to fill common application fields on Greenhouse, Lever, Ashby, SmartRecruiters, and Workday (preview). You review the application and submit it yourself.
 
 ## Open the Apply workspace
 
@@ -30,7 +30,7 @@ The local app stores your profile and runs either the official Codex CLI or the 
 1. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and choose this repository's `extension` folder. Chrome 116 or later is required. Alternatively, download `/extension.zip` from the local app and extract it first.
 2. Pin **JobMatch AI Autofill** using Chrome's Extensions menu.
 3. For an existing installation, run `git pull`, click Reload at `chrome://extensions`, accept the new side-panel permission if prompted, and refresh the job tab. If you installed from a ZIP, replace the files first. Your saved resume/profile remains in `.local`.
-4. Click the extension icon on your Greenhouse or Lever job tab. A side panel opens next to the application; no progress tab or popup is created.
+4. Click the extension icon on a supported job tab. A side panel opens next to the application and identifies the recruiting site; no progress tab or popup is created.
 5. In **Connection settings** inside the panel, use the same local address/port as your server (default `http://127.0.0.1:8000`). Only local HTTP addresses are accepted.
 
 ### Everything in the panel
@@ -50,9 +50,23 @@ Generated originals are also saved privately under `.local/drafts/`. Closing/reo
 
 The form report says whether a resume was **selected for upload**. Confirm the recruiting site completed the upload before submitting. If Greenhouse already attached a resume, the extension preserves it and reports that you must replace it manually to use the tailored copy. A DOCX download alone does not attach it to the application.
 
-### Saved answers on Greenhouse
+### Supported job sites
 
-The extension supports conventional text fields, native selects, common React-style comboboxes, and matching radio choices. It can reuse explicit saved U.S. citizenship/work authorization and sponsorship answers. Race and Hispanic/Latino ethnicity are **optional, explicit preferences**: enter your choices once in **My information**, or save a decline-to-disclose choice. Blank preferences remain unanswered. They are never inferred from your name, resume, citizenship, or other profile details. A race choice containing an ethnicity qualifier is not selected unless that qualifier is explicitly supported by your saved answer. Consent and unrelated demographic questions remain manual.
+| Recruiting site | Recognized hosts | Current coverage |
+| --- | --- | --- |
+| Greenhouse | `greenhouse.io`, `*.greenhouse.io` | Job text, known empty fields, supported dropdowns/radios, resume attachment |
+| Lever | `jobs.lever.co` | Job text, contact/profile fields, supported controls, resume attachment |
+| Ashby | `jobs.ashbyhq.com` | Job text, application field labels, contact/profile fields, supported controls, resume attachment |
+| SmartRecruiters | `jobs.smartrecruiters.com`, `careers.smartrecruiters.com` | Job text, labeled application fields, supported controls, resume attachment |
+| Workday **preview** | `*.myworkdayjobs.com`, `*.myworkdaysite.com` | Job text when present, visible-step contact/profile fields, native selects and accessible dropdown buttons, resume attachment |
+
+All sites share the same saved profile, base resume, tailoring provider, downloads, and history. No additional site permissions or per-site profile setup are required. This is initial coverage of known control patterns; employer-specific forms and custom controls can still require manual entry. Custom company domains, LinkedIn, and other recruiting platforms are not supported yet.
+
+For Workday, open the application and handle sign-in yourself. Click **Autofill with my information** on the step you want to fill. Advance between steps yourself; use **Fill saved information without AI** on later steps to reuse your profile without another tailoring request. That button uses the unchanged base resume if attachment is enabled: uncheck **Attach the resume** when you only want profile fields, and upload the downloaded tailored DOCX when needed. **Resume → Autofill with this resume** reuses a prepared draft while you remain on its original URL. If the URL changes, download/upload that draft manually. Paste the job description in the panel if the application step does not include it. Account creation/sign-in, work-history editors, unsupported custom controls, and final submission remain manual.
+
+### Saved answers
+
+The extension supports conventional text fields, native selects, common React-style comboboxes, accessible dropdown buttons, and matching radio/pressed-button choices. It can reuse explicit saved U.S. citizenship/work authorization and sponsorship answers. Race and Hispanic/Latino ethnicity are **optional, explicit preferences**: enter your choices once in **My information**, or save a decline-to-disclose choice. Blank preferences remain unanswered. They are never inferred from your name, resume, citizenship, or other profile details. A race choice containing an ethnicity qualifier is not selected unless that qualifier is explicitly supported by your saved answer. Consent and unrelated demographic questions remain manual.
 
 Browser fixtures cover these controls and early profile filling. The cloud network blocks access to the supplied live ID.me Greenhouse URL, so that exact employer form has not been verified live. Custom controls that cannot be matched confidently are reported for manual review.
 
@@ -80,7 +94,7 @@ The provider preference is saved in `.local/ai-provider.json` (ignored by Git). 
 
 The screenshot message **OpenAI quota or rate limit exceeded** is an API-side failure, independent of the UI. Exhausted API credits/project budgets need attention in OpenAI API billing; temporary rate limits may clear after waiting. A ChatGPT/Codex subscription does not supply API credits, but you can choose the separate Codex subscription mode above. Known temporary API rate limits are retried once after a short wait (at most five seconds); exhausted-credit and unknown 429 errors are not retried. If tailoring fails, the already-filled profile fields remain; no new resume is attached. You can still choose **Fill saved information without AI**, including attaching your unchanged base resume. An OpenAI key is not required for that mode.
 
-Existing answers and attachments are preserved. Unsupported dropdowns, unanswered custom/demographic questions, consent, and complex work-history widgets remain manual. You review and submit. For embedded forms, open the actual Greenhouse/Lever form in its own tab. LinkedIn and Workday are not supported. See [extension details](extension/README.md).
+Existing answers and attachments are preserved. Unsupported dropdowns, unanswered custom/demographic questions, consent, and complex work-history widgets remain manual. You review and submit. For embedded cross-origin forms, open the recruiting form directly in its own tab. See [extension details](extension/README.md).
 
 ## Run locally
 

@@ -22,7 +22,7 @@ const JobMatchApi = {
   async checkConnection() {
     const identity = await this.request('/health');
     if (identity.service !== 'jobmatch-ai' || identity.apiVersion !== 2 ||
-        !Array.isArray(identity.features) || !identity.features.includes('saved-profile') || !identity.features.includes('tailored-autofill') || !identity.features.includes('saved-autofill') || !identity.features.includes('subscription-tailoring') || !identity.features.includes('draft-history')) {
+        !Array.isArray(identity.features) || !identity.features.includes('saved-profile') || !identity.features.includes('tailored-autofill') || !identity.features.includes('saved-autofill') || !identity.features.includes('subscription-tailoring') || !identity.features.includes('draft-history') || !identity.features.includes('multi-site-autofill')) {
       throw this.incompatible(await this.origin());
     }
   },

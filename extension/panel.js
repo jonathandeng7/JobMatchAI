@@ -60,19 +60,21 @@ async function refreshTarget(){
   const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
   if(!sameJob(currentTab,tab)){jobOwner=null;$('job').value='';}
   currentTab=tab;
-  $('jobTitle').textContent=tab?.title||'Open a Greenhouse or Lever job';
-  $('jobHint').textContent=tab?.url&&supported(tab.url)?'Job tab connected · no extra tabs will open.':'Click the extension icon on a Greenhouse or Lever job tab to enable access.';
+  const site=jobmatchSite(tab?.url||'');
+  $('jobTitle').textContent=tab?.title||'Open a supported job application';
+  $('jobSite').textContent=site?`CURRENT APPLICATION · ${site.name}`:'CURRENT APPLICATION';
+  $('jobHint').textContent=site?site.hint:'Supported: Greenhouse, Lever, Ashby, SmartRecruiters, and Workday (preview). Click the extension icon on the job tab to enable access.';
   controls();return tab;
 }
-function supported(value){try{const url=new URL(value);return url.protocol==='https:'&&(/(^|\.)greenhouse\.io$/.test(url.hostname)||url.hostname==='jobs.lever.co');}catch{return false;}}
-async function target(){const tab=await refreshTarget();if(!tab?.id||!supported(tab.url))throw Error('Open a Greenhouse or Lever job, then click the extension icon on that tab.');return {id:tab.id,url:tab.url,title:tab.title};}
+function supported(value){return !!jobmatchSite(value);}
+async function target(){const tab=await refreshTarget();if(!tab?.id||!supported(tab.url))throw Error('Open a Greenhouse, Lever, Ashby, SmartRecruiters, or Workday job, then click the extension icon on that tab.');return {id:tab.id,url:tab.url,title:tab.title};}
 async function execute(details){
   try{return await chrome.scripting.executeScript(details);}
   catch(error){if(/cannot access|permission|not allowed/i.test(error.message))throw Error('Click the JobMatch extension icon on this job tab again to grant access, then retry here.');throw error;}
 }
 async function readJob(tab){
   if(sameJob(jobOwner,tab)&&$('job').value.trim().length>=80)return {title:tab.title,url:tab.url,jobDescription:$('job').value};
-  await execute({target:{tabId:tab.id},files:['job.js']});
+  await execute({target:{tabId:tab.id},files:['sites.js','job.js']});
   const result=await execute({target:{tabId:tab.id},func:()=>jobmatchJobContext()});
   const job=result[0]?.result;
   if(!job?.jobDescription)throw Error('No job description found. Paste it under View or paste the job description.');
@@ -97,7 +99,7 @@ async function fillBundle(bundle,tab,options={}){
   const active=await refreshTarget();
   if(!sameJob(tab,active))throw Error('The job page changed or you switched tabs. Return to the original job before autofilling this resume.');
   if(!options.quiet){step('fillStep','active');status('Filling your empty application fields…');}
-  await execute({target:{tabId:tab.id},files:['fill.js']});
+  await execute({target:{tabId:tab.id},files:['sites.js','fill.js']});
   const results=await execute({target:{tabId:tab.id},func:(data,attach,expectedUrl,fillOptions)=>{
     if(location.href!==expectedUrl)throw Error('The job page changed while preparing your information. Read the new job and retry.');
     return jobmatchFill(data,attach,fillOptions);
@@ -114,6 +116,9 @@ function displayReport(report){
   $('report').textContent=`${report.filled.length} fields filled\n${report.uploaded.length} resume file(s) selected for upload\n${report.existing} existing answers preserved\n\nNEEDS REVIEW\n${report.remaining.join('\n')||'Check the complete form before submitting.'}`+
     (report.uploaded.length?'\n\nConfirm the job site finished uploading the selected resume.':'');
   $('reportDetails').hidden=false;$('reportDetails').open=true;step('fillStep','done');
+}
+function fillSummary(report){
+  return report.filled.length||report.uploaded.length?'Autofill complete for this page.':'No new fields filled on this page. Open Autofill results to review existing answers and manual steps.';
 }
 async function refreshHistory(){
   try{
@@ -134,6 +139,7 @@ async function downloadDocument(doc){
   }finally{setTimeout(()=>URL.revokeObjectURL(url),60000);}
 }
 async function prepare(tailor,fill){
+  status('Connecting to the current application…');
   const tab=await target();steps();step('readStep','active');
   let fast,widgets,resumeProduced=false;
   if(fill){
@@ -158,8 +164,9 @@ async function prepare(tailor,fill){
     if(fill){
       const widgetReport=await widgets;
       const files=await fillBundle(bundle,tab,{filesOnly:true,quiet:true});
-      displayReport(combineReports(fast,widgetReport,files));
-      status('Autofill complete.'+downloadNote+' Your resume is on the card above and in the Resume tab. Confirm the site’s upload and review the form before submitting.');
+      const report=combineReports(fast,widgetReport,files);displayReport(report);
+      const resumeNote=bundle.generatedForJob?' Your tailored resume is on the card above and in the Resume tab.':bundle.resume?' Your saved base resume is in the Resume tab.':'';
+      status(fillSummary(report)+downloadNote+resumeNote+' Review the form and confirm any resume upload before submitting.');
     }else{view('resume');status('Tailored resume ready to review here.'+downloadNote+' Your application has not been filled.');}
   }catch(error){
     if(fill){const done=combineReports(fast,await widgets);displayReport(done);throw Error(`${done.filled.length} saved fields filled. `+(resumeProduced?'Your tailored resume is available on the resume card; the remaining form step failed. ':'The resume step did not finish. ')+error.message);}
@@ -191,7 +198,7 @@ async function editedBundle(){
   return {...draftBundle,resume:$('draft').value,document:doc};
 }
 $('draft').addEventListener('input',()=>{$('draftState').textContent='Edited locally · download to keep changes';controls();});
-action('applyDraft',async()=>{if(draftRevision!==revision)throw Error('Your saved information changed. Prepare a fresh resume first.');steps();step('readStep','done');step('tailorStep','done');await fillBundle(await editedBundle(),draftJob);status('Autofill complete. Confirm the selected resume finished uploading and review the form.');});
+action('applyDraft',async()=>{if(draftRevision!==revision)throw Error('Your saved information changed. Prepare a fresh resume first.');steps();step('readStep','done');step('tailorStep','done');const report=await fillBundle(await editedBundle(),draftJob);status(fillSummary(report)+' Confirm any selected resume finished uploading and review the form.');});
 async function downloadCurrent(){const bundle=await editedBundle();await downloadDocument(bundle.document);}
 action('download',downloadCurrent);action('downloadReady',downloadCurrent);
 $('reviewReady').onclick=()=>{view('resume');$('draft').focus();};

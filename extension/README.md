@@ -1,11 +1,11 @@
-# JobMatch AI side panel (v0.5)
+# JobMatch AI side panel (v0.6)
 
 ## Start and install
 
 1. From the repository root, run `python run.py --no-browser`. Keep the local server running; no app webpage is required. The server stores your profile and uses either the Codex CLI ChatGPT sign-in or an OpenAI API key.
 2. Open `chrome://extensions`, enable Developer mode, click **Load unpacked**, and choose the repository's `extension` folder (or a downloaded/extracted extension ZIP). Chrome 116+ is required.
 3. Pin JobMatch AI Autofill. When updating, pull changes and click Reload on its extension card. Accept the side-panel permission if prompted, then refresh the job page. Saved information stays in the local app.
-4. Click the toolbar icon on the Greenhouse (`*.greenhouse.io`) or Lever (`jobs.lever.co`) job tab. The extension opens beside it as a side panel. No new tabs are created.
+4. Click the toolbar icon on a supported job tab: Greenhouse, Lever, Ashby, SmartRecruiters, or Workday (preview). The extension identifies the site and opens beside it as a side panel. No new tabs are created.
 5. The panel connects to `http://127.0.0.1:8000` by default. Use **Connection settings** for a different local port. Server and panel must point to the same address. A reachable outdated app is distinguished from an offline app.
 
 ## Apply, tailor, and edit here
@@ -22,6 +22,20 @@
 
 Keep the side panel, local server, and application tab open during a run. Closing the panel can interrupt a run. After switching job tabs, click the extension icon on the new tab to grant temporary access. If the job description cannot be extracted, read/select its text or paste it into **View or paste the job description**.
 
+## Job sites
+
+| Site | Recognized hosts | Implementation |
+| --- | --- | --- |
+| Greenhouse | `greenhouse.io`, `*.greenhouse.io` | Job description, known application controls, file inputs |
+| Lever | `jobs.lever.co` | Job description, contact/profile labels, known controls, file inputs |
+| Ashby | `jobs.ashbyhq.com` | Posting description and Ashby question wrappers, known controls, hidden resume inputs |
+| SmartRecruiters | `jobs.smartrecruiters.com`, `careers.smartrecruiters.com` | Posting description and labeled form groups, known controls, file inputs |
+| Workday **preview** | `*.myworkdayjobs.com`, `*.myworkdaysite.com` | Posting description when present, visible-step Workday labels/identifiers, native selects and accessible listbox buttons, resume inputs |
+
+The same saved profile/resume and tailoring/download/history flow work across these sites. Employer-specific fields can differ from the tested patterns. Custom employer domains and LinkedIn are not supported. `sites.js` centralizes extension host detection and description selectors; the backend validates matching recruiting hosts before tailoring or saved-information requests.
+
+**Workday steps:** Open the application and sign in manually. The extension fills only the visible step. Advance yourself and click **Fill saved information without AI** again to fill the next step without regenerating a resume. That button attaches the unchanged base resume if enabled; turn off attachment for profile-only filling. Use **Resume → Autofill with this resume** to reuse the prepared draft on its original URL, or download/upload the tailored DOCX if step navigation changes the URL. If a step has no job description, paste the full posting into the panel before tailoring. Repeated work-history editors and employer-specific custom widgets remain manual. No Next, Continue, Sign in, or Submit button is clicked.
+
 ## Tailoring with your subscription
 
 For an eligible ChatGPT plan that includes Codex, install the official CLI (`npm install -g @openai/codex`) and run `codex login`. Choose **Sign in with ChatGPT** using your subscription account. Then select **Connection settings → AI tailoring provider → Codex — ChatGPT subscription → Save AI provider & check sign-in** in the panel. No OpenAI API key or separately billed API credits are needed for this tailoring mode. It still uses Codex plan limits.
@@ -34,7 +48,7 @@ The provider choice is retained in `.local/ai-provider.json`; profiles/resumes a
 
 In OpenAI API mode, a quota/credit/rate-limit error cannot be resolved by moving the UI. Check OpenAI API billing and project budgets for exhausted credits; retry later for temporary rate limits. Failed tailoring keeps the profile fields already filled and does not attach a new resume. The explicit saved-information mode remains available and does not incur an AI request. API keys stay in the local app, never in the extension. Known short temporary API rate limits get one bounded retry; exhausted credits do not.
 
-Only conventional empty fields with known labels are filled. Existing answers and files are preserved. Supported native/React-style selects and radio groups can fill explicit saved work-authorization, sponsorship, citizenship, race and ethnicity answers. Unanswered questions, unsupported widgets, consent, unrelated demographics, and complex work-history remain manual. Race/ethnicity are never inferred: enter the exact preference once under My information, or leave it blank for manual entry. Explicit decline-to-disclose preferences are supported. Embedded cross-origin forms must be opened directly. LinkedIn and Workday are unsupported. The extension never submits, creates accounts, extracts login sessions, or bypasses CAPTCHAs.
+Only conventional empty fields with known labels are filled. Existing answers and files are preserved. Supported native/React-style selects, accessible button comboboxes, and radio groups can fill explicit saved work-authorization, sponsorship, citizenship, race and ethnicity answers. Unanswered questions, unsupported widgets, consent, unrelated demographics, and complex work-history remain manual. Race/ethnicity are never inferred: enter the exact preference once under My information, or leave it blank for manual entry. Explicit decline-to-disclose preferences are supported. Embedded cross-origin forms must be opened directly. The extension never submits, creates accounts, extracts login sessions, or bypasses CAPTCHAs.
 
 Attaching can upload the DOCX to the recruiting site before final submission. If a custom widget does not accept it, download it in the Resume tab and upload manually. Review the AI draft and full application before submitting yourself.
 
@@ -42,7 +56,7 @@ Attaching can upload the DOCX to the recruiting site before final submission. If
 
 The local app stores the base resume/profile in `.local/candidate.json` (ignored by Git). Edits made in the panel update that same file. Keep the app loopback-only for this single-user workflow. Tailoring sends resume and job text to OpenAI. Generated drafts are retained separately under `.local/drafts`; original generated versions survive closing the panel. Local preview edits must be downloaded to retain them. Profile backups/downloads contain personal data and should not be committed.
 
-Permissions: `sidePanel` opens the extension beside the job; `activeTab` and `scripting` read/fill the tab you invoke it on; `storage` saves the connection address and download preference; `downloads` delivers the generated DOCX to Chrome Downloads; loopback HTTP host access connects to the app. No permanent Greenhouse/Lever site permission is requested. The toolbar handler opens the panel directly in response to your click.
+Permissions: `sidePanel` opens the extension beside the job; `activeTab` and `scripting` read/fill the tab you invoke it on; `storage` saves the connection address and download preference; `downloads` delivers the generated DOCX to Chrome Downloads; loopback HTTP host access connects to the app. No permanent recruiting-site permission is requested. The toolbar handler opens the panel directly in response to your click. Version 0.6 adds no new permissions; restart the updated server as well as reloading the extension.
 
 Automated browser fixtures cover the panel UI, tailored and saved-only filling, profile editing, upload, errors, and no tab creation using bridged Chrome APIs. Managed cloud Chromium blocks unpacked extension installation, so actual Chrome installation/permissions and live employer compatibility still require local verification.
 
@@ -55,3 +69,5 @@ The Apply tab shows a **Your tailored resume is ready** card with a named DOCX d
 Generated originals also appear in **Resume → Saved resumes from previous jobs**, backed by the local `.local/drafts` folder. Restoring a draft does not rerun AI or overwrite the base resume. Existing Greenhouse attachments are preserved and explicitly reported; replace those manually if you want the tailored copy. A selected file is not confirmation of a completed network upload, so verify the site's upload status before submitting.
 
 Targeted control fixtures run with `node tests/browser_greenhouse.cjs`. The live ID.me URL supplied in chat could not be loaded because the cloud egress proxy rejected it. Tests cover matching Greenhouse-style controls, not a verified live employer application.
+
+Multi-site fixtures run with `node tests/browser_sites.cjs`. They cover Ashby question wrappers, SmartRecruiters form groups, Workday visible steps and button dropdowns, explicit subsequent-step filling, preservation of existing answers, hidden resume inputs, account-form exclusion, unsupported-host rejection, and no submission. The panel suite (`node tests/browser_apply.cjs`, with the local app on `APP_URL`) also exercises each new site through capture, tailoring, delivery, and filling. These tests use synthetic forms and mocked model/Chrome APIs; live employer forms have not been verified for the newly added sites.

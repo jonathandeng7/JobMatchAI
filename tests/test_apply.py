@@ -26,7 +26,7 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
     async def test_health_identifies_the_app_without_private_data(self):
         response = await self.client.get('/health')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {'service':'jobmatch-ai', 'apiVersion':2, 'features':['apply-workspace','saved-profile','tailored-autofill','saved-autofill','subscription-tailoring','draft-history']})
+        self.assertEqual(response.json(), {'service':'jobmatch-ai', 'apiVersion':2, 'features':['apply-workspace','saved-profile','tailored-autofill','saved-autofill','subscription-tailoring','draft-history','multi-site-autofill']})
 
     async def test_apply_and_extension_download(self):
         response = await self.client.get('/')
@@ -40,7 +40,7 @@ class ApplyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Their next hire.', response.text)
         response = await self.client.get('/extension.zip')
         with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-            self.assertEqual(set(z.namelist()), {'manifest.json','background.js','panel.html','panel.js','config.js','panel.css','job.js','fill.js','README.md'})
+            self.assertEqual(set(z.namelist()), {'manifest.json','background.js','panel.html','panel.js','config.js','sites.js','panel.css','job.js','fill.js','README.md'})
 
     async def test_document_round_trip(self):
         response = await self.client.post('/resume-document', json={'resume':'Jonathan Deng\nExperience\nBuilt APIs'})
@@ -123,7 +123,12 @@ class SavedCandidateTests(unittest.IsolatedAsyncioTestCase):
         await self.client.put('/candidate', json=self.candidate)
         result = TailoredResume(resume='Tailored resume', changes=[], questions=['Check dates'])
         with patch('backend.apply.tailor', new=AsyncMock(return_value=result)) as tailor:
-            for url in ['https://jobs.lever.co/example/123', 'https://job-boards.greenhouse.io/example/jobs/456']:
+            for url in ['https://jobs.lever.co/example/123', 'https://job-boards.greenhouse.io/example/jobs/456',
+                        'https://jobs.ashbyhq.com/example/job-id/application',
+                        'https://jobs.smartrecruiters.com/Example/123-engineer',
+                        'https://careers.smartrecruiters.com/Example',
+                        'https://example.wd5.myworkdayjobs.com/en-US/External/job/Engineer_R123/apply',
+                        'https://wd5.myworkdaysite.com/recruiting/example/external/job/Engineer_R123']:
                 response = await self.client.post('/autofill', json={'job_description':'Python engineering role with API development and teamwork. '*3, 'job_url':url})
                 self.assertEqual(response.status_code, 200)
                 bundle = response.json()
@@ -139,7 +144,10 @@ class SavedCandidateTests(unittest.IsolatedAsyncioTestCase):
         response = await self.client.post('/autofill', json={'job_description':'job '*30})
         self.assertEqual(response.status_code, 409)
         await self.client.put('/candidate', json=self.candidate)
-        for url in ['https://evil.example/jobs/1', 'https://jobs.lever.co.evil.example/1', 'http://jobs.lever.co/1', 'https://name:password@jobs.lever.co/1']:
+        for url in ['https://evil.example/jobs/1', 'https://jobs.lever.co.evil.example/1', 'http://jobs.lever.co/1', 'https://name:password@jobs.lever.co/1',
+                    'https://jobs.ashbyhq.com.evil.example/1','https://notmyworkdayjobs.com/job/1',
+                    'https://example.myworkdaysite.com.evil.example/1', 'https://evilsmartrecruiters.com/job',
+                    'https://jobs.ashbyhq.com:8443/job', 'https://jobs.ashbyhq.com:invalid/job', 'https://[invalid/job']:
             response = await self.client.post('/autofill', json={'job_description':'job '*30, 'job_url':url})
             self.assertEqual(response.status_code, 400)
         response = await self.client.post('/autofill', json={'job_description':'short'})

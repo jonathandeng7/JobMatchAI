@@ -28,7 +28,7 @@ const {chromium}=require('playwright'),fs=require('fs'),path=require('path'),ass
  }
  </script>`;
  await page.route('https://job-boards.greenhouse.io/**',r=>r.fulfill({contentType:'text/html',body:html}));
- async function reset(){await page.goto('https://job-boards.greenhouse.io/example/jobs/1');await page.addScriptTag({path:path.resolve(__dirname,'../extension/fill.js')});}
+ async function reset(){await page.goto('https://job-boards.greenhouse.io/example/jobs/1');for(const file of ['sites.js','fill.js'])await page.addScriptTag({path:path.resolve(__dirname,'../extension',file)});}
  const profile={firstName:'Alex',email:'alex@example.test',city:'Boca Raton',state:'FL',country:'United States',school:'University of Florida',degree:'B.S. in Computer Science',workAuthorization:'U.S. citizen; authorized to work in the United States',sponsorship:'No sponsorship required',race:'Asian',ethnicity:'Not Hispanic or Latino'};
  try{
  await reset();

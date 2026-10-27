@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "JobMatch AI Autofill",
-  "version": "0.5.0",
-  "description": "Tailor your saved resume and fill application details on Greenhouse and Lever in one click.",
+  "version": "0.6.0",
+  "description": "Tailor resumes and fill Greenhouse, Lever, Ashby, SmartRecruiters, and Workday (preview) applications from your saved profile.",
   "permissions": [
     "activeTab",
     "scripting",
